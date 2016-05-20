@@ -61,14 +61,14 @@
 # allow modifications made to configuration settings to be saved back into the table.
 package Titor::ConfigMicro;
 
+use base qw(Titor);
 use strict;
 use DBI;
 
-our ($VERSION, $errstr);
+our ($VERSION);
 
 BEGIN {
     $VERSION = 2.0;
-    $errstr = '';
 }
 
 # ============================================================================
@@ -94,7 +94,10 @@ sub new {
     my $invocant = shift;
     my $class    = ref($invocant) || $invocant;
     my $filename = shift;
-    my $self     = bless { }, $class;
+    my $self     = $class -> SUPER::new(quote_values    => '"',
+                                        inline_comments => 1,
+                                        @_)
+        or return undef;
 
     # Return here if we have no filename to load from
     return $self if(!$filename);
@@ -103,7 +106,7 @@ sub new {
     return $self if($self -> read($filename));
 
     # Get here and things have gone wahoonie-shaped
-    return set_error($self -> {"errstr"});
+    return Titor::set_error($self -> {"errstr"});
 }
 
 
@@ -461,58 +464,6 @@ sub _longest_key {
     }
 
     return $longest;
-}
-
-# ============================================================================
-#  Error functions
-
-## @cmethod private $ set_error($errstr)
-# Set the class-wide errstr variable to an error message, and return undef. This
-# function supports error reporting in the constructor and other class methods.
-#
-# @param errstr The error message to store in the class errstr variable.
-# @return Always returns undef.
-sub set_error {
-    $errstr = shift;
-    return undef;
-}
-
-
-## @method private $ self_error($errstr)
-# Set the object's errstr value to an error message, and return undef. This
-# function supports error reporting in various methods throughout the class.
-#
-# @param errstr The error message to store in the object's errstr.
-# @return Always returns undef.
-sub self_error {
-    my $self = shift;
-    $self -> {"errstr"} = shift;
-
-    # Log the error in the database if possible.
-    $self -> {"logger"} -> log("error", 0, undef, $self -> {"errstr"})
-        if($self -> {"logger"} && $self -> {"errstr"});
-
-    return undef;
-}
-
-
-## @method private void clear_error()
-# Clear the object's errstr value. This is a convenience function to help
-# make the code a bit cleaner.
-sub clear_error {
-    my $self = shift;
-
-    $self -> self_error(undef);
-}
-
-
-## @method $ errstr()
-# Return the current value set in the object's errstr value. This is a
-# convenience function to help make code a little cleaner.
-sub errstr {
-    my $self = shift;
-
-    return $self -> {"errstr"};
 }
 
 1;
