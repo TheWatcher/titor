@@ -170,7 +170,7 @@ sub self_error {
     $self -> {"errstr"} = shift;
 
     # Log the error in the database if possible.
-    $self -> {"logger"} -> log("error", 0, undef, $self -> {"errstr"})
+    $self -> {"logger"} -> error($self -> {"errstr"})
         if($self -> {"logger"} && $self -> {"errstr"});
 
     return undef;
