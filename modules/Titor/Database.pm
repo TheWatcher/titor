@@ -23,5 +23,62 @@ package Titor::Database;
 use parent qw(Titor);
 use strict;
 use v5.14;
+use Module::Load;
+
+
+## @cmethod $ new(%args)
+# Create a new database object to handle dynamic loading of database-specific backup
+# modules. The supported arguments that may be provided are:
+#
+# - `logger`: a logger handle to log operations through.
+#
+# @param args A hash of key value pairs to initialise the object with.
+# @return A new Database object, or undef if a problem occured.
+sub new {
+    my $invocant = shift;
+    my $class    = ref($invocant) || $invocant;
+    my $self     = $class -> SUPER::new(@_)
+        or return undef;
+
+    $self -> {"modules"} = { "mysql" => "Titor::Database::MySQL" };
+
+    return $self;
+}
+
+
+## @method $ load_module($name, %args)
+# Dynamically load the database backup module named, passing the provided arguments
+# to its constructor.
+#
+# @param name The name of the database backup module to load. This may be either a
+#             perl module name, or an alias.
+# @param args A hash of arguments to pass to the database backup module constructor.
+# @return A reference to a database backup module object on success, undef on error.
+sub load_module {
+    my $self = shift;
+    my $name = shift;
+    my %args = @_;
+
+    $args{"logger"} = $self -> {"logger"};
+
+    # Convert name to a module name, unless it is one.
+    $name = $self -> {"modules"} -> {$name}
+        unless($name =~ /^Titor::Database::/);
+
+    return $self -> self_error("Unable to find implementation module for specified alias.")
+        if(!$name);
+
+    # Handle dynamic loading. Note that
+    no strict 'refs';
+    eval { load $name };
+    return $self -> self_error("Unable to load module '$name': $@")
+        if($@);
+
+    my $modobj = $name -> new(%args)
+        or return $self -> self_error("Unable to create instance of '$name': ".$Titor::errstr);
+    use strict;
+
+    return $modobj;
+}
 
 1;
