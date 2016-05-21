@@ -20,4 +20,6 @@
 ## @class
 package Titor::Database;
 
+use parent qw(Titor);
+
 1;

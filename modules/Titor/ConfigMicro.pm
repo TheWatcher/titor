@@ -61,7 +61,7 @@
 # allow modifications made to configuration settings to be saved back into the table.
 package Titor::ConfigMicro;
 
-use base qw(Titor);
+use parent qw(Titor);
 use strict;
 use DBI;
 
