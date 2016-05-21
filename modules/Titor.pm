@@ -25,7 +25,9 @@
 package Titor;
 
 use strict;
-use Scalar::Util 'blessed';
+use parent qw(Exporter::Tiny);
+
+our @EXPORT_OK = qw(path_join hash_or_hashref array_or_arrayref);
 
 our $errstr;
 
@@ -51,6 +53,94 @@ sub new {
     };
 
     return bless $self, $class;
+}
+
+
+# ============================================================================
+#  File and path related functions
+
+## @fn $ path_join(@fragments)
+# Take an array of path fragments and concatenate them together. This will
+# concatenate the list of path fragments provided using '/' as the path
+# delimiter (this is not as platform specific as might be imagined: windows
+# will accept / delimited paths). The resuling string is trimmed so that it
+# <b>does not</b> end in /, but nothing is done to ensure that the string
+# returned actually contains a valid path.
+#
+# @param fragments An array of path fragments to join together. Items in the
+#                  array that are undef or "" are skipped.
+# @return A string containing the path fragments joined with forward slashes.
+sub path_join {
+    my @fragments = @_;
+    my $leadslash;
+
+    # strip leading and trailing slashes from fragments
+    my @parts;
+    foreach my $bit (@fragments) {
+        # Skip empty fragments.
+        next if(!defined($bit) || $bit eq "");
+
+        # Determine whether the first real path has a leading slash.
+        $leadslash = $bit =~ m|^/| unless(defined($leadslash));
+
+        # Remove leading and trailing slashes
+        $bit =~ s|^/*||; $bit =~ s|/*$||;
+
+        # If the fragment was nothing more than slashes, ignore it
+        next unless($bit);
+
+        # Store for joining
+        push(@parts, $bit);
+    }
+
+    # Join the path, possibly including a leading slash if needed
+    return ($leadslash ? "/" : "").join("/", @parts);
+}
+
+
+# ============================================================================
+#  Miscellaneous functions
+
+
+## @fn $ hash_or_hashref(@args)
+# Given a list of arguments, if the first argument is a hashref it is returned,
+# otherwise if the list length is nonzero and even, the arguments are shoved
+# into a hash and a reference to that is returned. If the argument list is
+# empty or its length is odd, and empty hashref is returned.
+#
+# @param args A list of arguments, may either be a hashref or a list of key/value
+#             pairs to place into a hash.
+# @return A hashref.
+sub hash_or_hashref {
+    my $len = scalar(@_);
+    return {} unless($len);
+
+    # Even number of args? Shove them into a hash and get a ref
+    if($len % 2 == 0) {
+        return { @_ };
+
+    # First arg is a hashref? Return it
+    } elsif(ref($_[0]) eq "HASH") {
+        return $_[0];
+    }
+
+    # No idea what to do, so give up.
+    return {};
+}
+
+
+## @fn $ array_or_arrayref(@args)
+# Given a list of arguments, if the first argument is an arrayref it is returned,
+# otherwise an arrayref containing the specified arguments is returned.
+#
+# @param args A list of arguments, may either be an arrayref or a list of values.
+# @return An arrayref.
+sub array_or_arrayref {
+    my @args = @_;
+    return [] unless(scalar(@args));
+
+    return $args[0] if(ref($args[0]) eq "ARRAY");
+    return \@args;
 }
 
 
