@@ -63,6 +63,7 @@ package Titor::ConfigMicro;
 
 use parent qw(Titor);
 use strict;
+use v5.14;
 use DBI;
 
 our ($VERSION);

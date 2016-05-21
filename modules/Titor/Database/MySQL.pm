@@ -24,6 +24,8 @@ use parent qw(Titor::Database);
 use DateTime;
 use File::Path qw(make_path remove_tree);
 use Text::Sprintf::Named qw(named_sprintf);
+use v5.14;
+use strict;
 
 
 ## @cmethod $ new(%args)

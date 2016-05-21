@@ -21,5 +21,7 @@
 package Titor::Database;
 
 use parent qw(Titor);
+use strict;
+use v5.14;
 
 1;

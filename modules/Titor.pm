@@ -24,11 +24,11 @@
 # set_error() in a subclass, remember to use Titor::set_error().
 package Titor;
 
-use strict;
 use parent qw(Exporter::Tiny);
+use v5.14;
+use strict;
 
 our @EXPORT_OK = qw(path_join hash_or_hashref array_or_arrayref);
-
 our $errstr;
 
 BEGIN {
