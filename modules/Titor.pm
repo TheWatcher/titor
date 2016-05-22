@@ -19,9 +19,6 @@
 ## @class
 # This is a base class for Titor modules, providing common
 # features - primarily a simple base constructor and error functions.
-# Subclasses will generally only need to override the constructor, usually
-# chaining it with `$class -> SUPER::new(..., @_);`. If attempting to call
-# set_error() in a subclass, remember to use Titor::set_error().
 package Titor;
 
 use parent qw(Exporter::Tiny);
