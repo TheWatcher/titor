@@ -26,6 +26,9 @@ use v5.14;
 use Module::Load;
 
 
+# ============================================================================
+#  Constructor
+
 ## @cmethod $ new(%args)
 # Create a new database object to handle dynamic loading of database-specific backup
 # modules. The supported arguments that may be provided are:
@@ -45,6 +48,10 @@ sub new {
     return $self;
 }
 
+
+
+# ============================================================================
+#  Dynamic loader
 
 ## @method $ load_module($name, %args)
 # Dynamically load the database backup module named, passing the provided arguments

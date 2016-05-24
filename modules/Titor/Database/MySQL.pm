@@ -28,6 +28,9 @@ use v5.14;
 use strict;
 
 
+# ============================================================================
+#  Constructor
+
 ## @cmethod $ new(%args)
 # Create a new MySQL object. The supported values you can pass as arguments are:
 #
@@ -98,6 +101,9 @@ sub new {
     return $self;
 }
 
+
+# ============================================================================
+#  Interface
 
 ## @method $ backup_database($name, $outdir, $now)
 # Back up the specified database to a file in the output directory. This will run the
