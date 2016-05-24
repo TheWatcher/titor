@@ -88,4 +88,46 @@ sub load_module {
     return $modobj;
 }
 
+
+# ============================================================================
+#  Interface
+
+# All subclasses should implement both of these methods.
+
+# @method $ backup_database($name, $outdir, $now)
+# Back up the specified database to a file in the output directory. This will run the
+# backup command for the named database, writing the output to a file with the name
+# databasename_YYYYMMDD-HHMMSS.sql (the backup command may add other extensions) in the
+# output directory specified.
+#
+# @param name   The name of the database to back up.
+# @param outdir The directory to write the database backup file to.
+# @param now    Optional reference to a DateTime object to use to timestamp filenames.
+# @return the name of the backup file on successful backup, undef on error.
+sub backup_database {
+    my $self   = shift;
+
+    return $self -> self_error("Call to unimplemented backup_database()");
+}
+
+
+## @method $ backup_all($name, $outdir, $exclude, ...)
+# Backup all databases in the system, other than those excluded by default rules
+# or explicitly specified. This fetches the list of databases in the system and
+# creates a backup of them as a single archive containing one archive per database.
+#
+# @param name    The base name of the backup archive. This will be appended with the
+#                date and time of backup.
+# @param outdir  The directory to write the backup archive to.
+# @param exclude An array, or reference to an array, of database names to exclude
+#                from the backup. This is merged with the internal exclusion list,
+#                so you do not need to explicily exclude the information or
+#                performance schema tables yourself.
+# @return The filename of the backup archive on success, undef on error.
+sub backup_all {
+    my $self    = shift;
+
+    return $self -> self_error("Call to unimplemented backup_all()");
+}
+
 1;
