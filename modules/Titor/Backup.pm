@@ -27,6 +27,9 @@ use Text::Sprintf::Named qw(named_sprintf);
 use v5.14;
 
 
+# ============================================================================
+#  Constructor
+
 ## @cmethod $ new(%args)
 # Create a new Backup object to handle remote backup handling. The
 # supported arguments that may be provided are:
@@ -38,11 +41,19 @@ use v5.14;
 sub new {
     my $invocant = shift;
     my $class    = ref($invocant) || $invocant;
-    my $self     = $class -> SUPER::new(@_)
+    my $self     = $class -> SUPER::new(sshbase     => '/usr/bin/ssh -p %(port)s %(user)s@%(host)s -e "%(command)s"',
+
+                                        remotespace => '/usr/bin/df -BH %(path)s',
+                                        @_)
         or return undef;
 
     return $self;
 }
+
+
+# ============================================================================
+#  Interface
+
 
 
 
