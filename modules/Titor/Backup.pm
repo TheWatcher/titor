@@ -45,6 +45,7 @@ use DateTime;
 use File::Path qw(make_path remove_tree);
 use Text::Sprintf::Named qw(named_sprintf);
 use v5.14;
+use Data::Dumper;
 
 
 # ============================================================================
@@ -61,7 +62,6 @@ use v5.14;
 #
 # Optional arguments are:
 #
-# - `sshport`:    the port to connect to ssh through, defaults to 22.
 # - `full_count`: the number of full backups to make. Must be > 0, defaults to 2.
 # - `inc_count`:  the number of incremental backups to make per full backup, defaults to 10.
 #
@@ -70,18 +70,21 @@ use v5.14;
 sub new {
     my $invocant = shift;
     my $class    = ref($invocant) || $invocant;
-    my $self     = $class -> SUPER::new(sshbase     => '/usr/bin/ssh -p %(port)s %(user)s@%(host)s "%(command)s" 2>&1',
+    my $self     = $class -> SUPER::new(sshbase     => '/usr/bin/ssh %(user)s@%(host)s "%(command)s" 2>&1',
                                         sshuser     => undef,
-                                        sshport     => 22,
                                         sshhost     => undef,
 
                                         full_count  => 2,
                                         inc_count   => 10,
 
-                                        remotespace => '/usr/bin/df -BH %(path)s',
+                                        remotespace => '/bin/df -k --output=avail %(path)s',
                                         remotedirs  => '/bin/ls -1 %(path)s',
                                         remoterm    => '/bin/rm -rf %(path)s',
                                         remotemv    => '/bin/mv %(source)s %(dest)s',
+
+                                        rsyncremote => '%(user)s@%(host)s:%(path)s',
+                                        rsyncdry    => '/usr/bin/rsync -az --delete %(exclude)s %(include)s %(compare)s --dry-run --stats %(source)s %(dest)s 2>&1',
+                                        rsync       => '/usr/bin/rsync -az --delete %(exclude)s %(include)s %(compare)s --stats %(source)s %(dest)s 2>&1',
 
                                         names       => { full        => 'full_',
                                                          incremental => 'inc_',
@@ -110,44 +113,42 @@ sub backup {
     my $self = shift;
     my %args = @_;
 
+    $self -> clear_error();
+
+    # Fetch the current list, and work out what needs to be done
+    my $backups = $self -> _remote_backup_list($args{"remotedir"})
+        or return undef;
+
+    my $ops = $self -> _backup_paths($backups);
+
+    # If there's a rename required, do it.
+    $self -> _remote_rename($ops -> {"backuppath"}, $ops -> {"rename"}, $ops -> {"backupdir"}) or return undef
+        if($ops -> {"rename"});
+
+    # Precalculate paths
+    # remote path
+    my $remotepath = Titor::path_join($ops -> {"backuppath"}, $ops -> {"backupdir"});
+    my $remote     = named_sprintf($self -> {"rsyncremote"}, user => $self -> {"sshuser"},
+                                                             host => $self -> {"sshhost"},
+                                                             path => $remotepath);
+
+    # include/exclude path directives and the compare list
+    my ($include, $exclude) = ( $self -> _rsync_cludes("include", \%args),
+                                $self -> _rsync_cludes("exclude", \%args));
+
+    my $compare = $self -> _rsync_compare_dest($args{"comparelist"});
+
+    # Make sure we can do the backup
+    $self -> _rsync_size_check($exclude, $include, $compare, $args{"localdir"}, $ops -> {"backuppath"}, $remote)
+        or return undef;
+
 
 
 }
 
 
 # ============================================================================
-#  Private functions
-
-## @method private $ _fetch_backup_list($name)
-# Given a backup name, fetch a list of all the currently stored full or incremental
-# backups.
-#
-# @param name The name of the backup directory to look for directories in.
-# @return A reference to a hash containing the full base path to the
-#         directory list, and full and incremental backup lists, including
-#         per-full-backup incremental lists. See _build_incremental_lists()
-#         for an example of the sort of hash this generates.
-sub _fetch_backup_list {
-    my $self = shift;
-    my $name = shift;
-
-    $self -> clear_error();
-
-    # Invoke the remote list
-    my $remote_path  = Titor::path_join($self -> {"remotepath"}, $name);
-    my ($code, $res) = $self -> _ssh_cmd(named_sprintf($self -> {"remotedirs"}, path => $remote_path));
-
-    return $self -> self_error("Unable to list remote backups, response was: '$res'")
-        if($code); # Successful listing should result in 0
-
-    # Convert to an array for easier processing.
-    my @files = split(/^/, $res);
-    chomp(@files);
-
-    # It's gone well so far, try to make a hash of it!
-    return $self -> _build_backup_hash($remote_path, \@files);
-}
-
+#  Private functions - path wrangling
 
 ## @method private $ _backup_paths($backups)
 # Given a reference to a hash of backup information, work out what the next backup
@@ -210,32 +211,6 @@ sub _backup_paths {
             };
         }
     }
-}
-
-
-## @method private @ _ssh_cmd($cmd)
-# Execute the specified command on the remote host using SSH. This creates
-# a connection to the remote host over ssh, and runs the command, returning
-# the string result of the operation.
-#
-# @param cmd The command to run on the remote host.
-# @return An array of two values: the first is the exit status of the command
-#         (0 indicates both the command and ssh connection were successful,
-#         non-zero means an error occurred), the second is a string containing
-#         the output of the command (possibly including output from ssh on error)
-sub _ssh_cmd {
-    my $self = shift;
-    my $cmd  = shift;
-
-    my $sshcmd = named_sprintf($self -> {"sshbase"}, port    => $self -> {"sshport"},
-                                                     user    => $self -> {"sshuser"},
-                                                     host    => $self -> {"sshhost"},
-                                                     command => $cmd);
-
-    $self -> {"logger"} -> info("Running '$cmd' on remote system...");
-    my $res = `$sshcmd`;
-
-    return (${^CHILD_ERROR_NATIVE}, $res);
 }
 
 
@@ -362,5 +337,225 @@ sub _build_backup_name {
     return $name;
 }
 
+
+# ============================================================================
+#  Private functions - remote commands
+
+
+## @method private @ _ssh_cmd($cmd)
+# Execute the specified command on the remote host using SSH. This creates
+# a connection to the remote host over ssh, and runs the command, returning
+# the string result of the operation.
+#
+# @param cmd The command to run on the remote host.
+# @return An array of two values: the first is the exit status of the command
+#         (0 indicates both the command and ssh connection were successful,
+#         non-zero means an error occurred), the second is a string containing
+#         the output of the command (possibly including output from ssh on error)
+sub _ssh_cmd {
+    my $self = shift;
+    my $cmd  = shift;
+
+    my $sshcmd = named_sprintf($self -> {"sshbase"}, user    => $self -> {"sshuser"},
+                                                     host    => $self -> {"sshhost"},
+                                                     command => $cmd);
+
+    $self -> {"logger"} -> info("Running '$cmd' on remote system...");
+    my $res = `$sshcmd`;
+
+    return (${^CHILD_ERROR_NATIVE}, $res);
+}
+
+
+
+## @method private $ _remote_backup_list($name)
+# Given a backup name, fetch a list of all the currently stored full or incremental
+# backups.
+#
+# @param name The name of the backup directory to look for directories in.
+# @return A reference to a hash containing the full base path to the
+#         directory list, and full and incremental backup lists, including
+#         per-full-backup incremental lists. See _build_incremental_lists()
+#         for an example of the sort of hash this generates.
+sub _remote_backup_list {
+    my $self = shift;
+    my $name = shift;
+
+    $self -> clear_error();
+
+    # Invoke the remote list
+    my $remote_path  = Titor::path_join($self -> {"remotepath"}, $name);
+    my ($code, $res) = $self -> _ssh_cmd(named_sprintf($self -> {"remotedirs"}, path => $remote_path));
+
+    return $self -> self_error("Unable to list remote backups, response was: '$res'")
+        if($code); # Successful listing should result in 0
+
+    # Convert to an array for easier processing.
+    my @files = split(/^/, $res);
+    chomp(@files);
+
+    # It's gone well so far, try to make a hash of it!
+    return $self -> _build_backup_hash($remote_path, \@files);
+}
+
+
+# @method private $ _remote_rename($path, $srcdir, $destdir)
+# Given a path, and two directory names within that path, attempt to rename
+# the source to the destination.
+#
+# @param path    The remote directory contianing the directories to rename.
+# @param srcdir  The source directory name.
+# @param destdir The destination directory name.
+# @return true on success, undef on error.
+sub _remote_rename {
+    my $self    = shift;
+    my $path    = shift;
+    my $srcdir  = shift;
+    my $destdir = shift;
+
+    $self -> clear_error();
+
+    my $cmd = named_sprintf($self -> {"remotemv"}, source => Titor::path_join($path, $srcdir),
+                                                   dest   => Titor::path_join($path, $destdir));
+
+    my ($status, $msg) = $self -> _ssh_cmd($cmd);
+    return $self -> self_error("Remote rename failed: '$msg'")
+        if($status || $msg);
+
+    return 1;
+}
+
+
+## @method private $ _remote_space($path)
+# Determine how much space is available in the specified remote path.
+#
+# @param path The path to
+sub _remote_space {
+    my $self = shift;
+    my $path = shift;
+
+    $self -> clear_error();
+
+    my $cmd = named_sprintf($self -> {"remotespace"}, path => $path);
+
+    my ($status, $msg) = $self -> _ssh_cmd($cmd);
+    return $self -> self_error("Remote df failed: '$msg'")
+        if($status);
+
+    my ($size) = $msg =~ /Avail\s+(\d+)/;
+    return $self -> self_error("Unable to parse available space from result '$msg'")
+        unless(defined($size));
+
+    return $size;
+}
+
+
+# ============================================================================
+#  Private functions - rsync support
+
+
+## @method private $ _rsync_cludes($mode, $settings)
+# Given a mode, either 'exclude' or 'include' work out whether the settings
+# contain include or exclude rules or files, and build rsync command line
+# fragments for thise rules.
+#
+# @param mode     The strint 'include' or 'exclude'.
+# @param settings A reference to a hash of backup settings.
+# @return A string containing rsync include or exclude directives, or an
+#         empty string if the settings do not contain such directives.
+sub _rsync_cludes {
+    my $self     = shift;
+    my $mode     = shift;
+    my $settings = shift;
+
+    my $result = "";
+    if($settings -> {$mode}) {
+        my @cludes = split(/,/, $settings -> {$mode});
+
+        # Build up a series of arguments
+        foreach my $rule (@cludes) {
+            $result .= " --$mode='$rule'";
+        }
+    }
+
+    # If the config has an file set, record it.
+    my $modefile = $mode."file";
+    $result .= " --$mode-from='".$settings -> {$modefile}."'"
+        if($settings -> {$modefile} && -f $settings -> {$modefile});
+
+    return $result;
+}
+
+
+## @method private $ _rsync_compare_dest($comparelist)
+# Build a list of '--compare-dest' arguments to rsync based on the specified
+# array of directories. Not that, if the directories in the compare list do
+# not start with '/', they are assumed to be relative to the destination
+# and will have '../' prepended.
+#
+# @param comparelist A reference to an array of directories.
+# @return A string containing the --compare-dest arguments
+sub _rsync_compare_dest {
+    my $self        = shift;
+    my $comparelist = shift;
+
+    return "" unless($comparelist && scalar(@{$comparelist}));
+
+    my $result = "";
+    foreach my $path (@{$comparelist}) {
+        # Make paths relative to the destination unless absolute
+        $path = "../$path"
+            unless($path =~ /^\//);
+
+        $result .= " --compare-dest='$path'";
+    }
+
+    return $result;
+}
+
+
+## @method pricate % _rsyc_size_check($exclude, $include, $compare, $localdir, $remotebase, $remote)
+#
+#
+sub _rsync_size_check {
+    my $self       = shift;
+    my $exclude    = shift;
+    my $include    = shift;
+    my $compare    = shift;
+    my $localdir   = shift;
+    my $remotebase = shift;
+    my $remote     = shift;
+
+    # Dry run to fetch sizes
+    my $drycmd = named_sprintf($self -> {"rsyncdry"}, exclude => $exclude,
+                                                      include => $include,
+                                                      compare => $compare,
+                                                      source  => $localdir,
+                                                      dest    => $remote);
+    $self -> {"logger"} -> info("Calculating how much data will be transferred.");
+    $self -> {"logger"} -> info("Running command: $drycmd");
+    my $res = `$drycmd`;
+    return $self -> self_error("Rsync dry-run failed: '$res'")
+        if(${^CHILD_ERROR_NATIVE});
+
+    # We're really only interested in the number of bytes transferred
+    my ($update) = $res =~ /^Total transferred file size: ([\d,]+) bytes$/m;
+    return $self -> self_error("Unable to parse transfer size from '$res'")
+        unless(defined($update));
+
+    $update =~ s/,//g; # Pesky commas, begone.
+    $update /= 1024;   # And we want the size in K, not bytes.
+
+    # How much space to we have remotely?
+    my $space = $self -> _remote_space($remotebase);
+    return undef if(!defined($space));
+
+    return $self -> self_error(sprintf("Insufficient space left on backup system: backup requires %.2fK, %.2fK available", $update, $space))
+        if($space < $update);
+
+    $self -> {"logger"} -> info(sprintf("Backup requires %.2fK, %.2fK available", $update, $space));
+
+    return 1;
+}
 
 1;
