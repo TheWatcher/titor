@@ -17,11 +17,36 @@
 # along with this program.  If not, see http://www.gnu.org/licenses/.
 
 ## @class
+# A class to handle incremental, remote backups using rsync and its
+# --compare-dest facilities.
+#
+# This class is based around the functionality that was present in the
+# tardis backup system, except that it makes two major departures
+# from that system's behaviour:
+#
+# - it does not present incremental backups as 'full' backups at the
+#   filesystem level: no hardlinking trickery is performed, incremental
+#   backups contain no files or directories other than the ones changed
+#   since the last full or incremental backup. This will hopefully
+#   reduce filesystem overhead, making operations faster and more robust.
+# - it does not expect the remote filesystem to be in an image file,
+#   relying on the limiting performed by the filesystem itself to
+#   control backup size. Instead this will self-limit the number of
+#   incremental and full backups based on explicitly specified limits.
+#
+# Both of these changes are intended to make the backup system more
+# robust in general use, make filesystem operations faster, and greatly
+# simplify the backup process; the only major cost in features this
+# introduces is the fact that incremental backups will no longer act
+# as system snapshots, and doing a full restore from a given backup
+# point will be slightly more complex.
 #
 # @todo Shell quoting.
+package Titor::Backup;
 
 # How this thing works
 # ====================
+# This is the general backup process as implemented in the backup() function:
 #
 # - if there are no backups
 #     - make a full backup
@@ -38,8 +63,6 @@
 #             - sync the renamed backup to the latest state (include --delete)
 #             - delete all incrementals for that full backup
 
-package Titor::Backup;
-
 use parent qw(Titor);
 use strict;
 use DateTime;
@@ -47,8 +70,6 @@ use File::Path qw(make_path remove_tree);
 use Text::Sprintf::Named qw(named_sprintf);
 use String::ShellQuote;
 use v5.14;
-use Data::Dumper;
-
 
 # ============================================================================
 #  Constructor
@@ -141,8 +162,6 @@ sub backup {
         or return undef;
 
     my $ops = $self -> _backup_paths($backups);
-
-    print Dumper($ops);
 
     # include/exclude path directives and the compare list
     my ($include, $exclude) = ( $self -> _rsync_cludes("include", $args),
