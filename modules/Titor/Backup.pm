@@ -18,6 +18,7 @@
 
 ## @class
 #
+# @todo Shell quoting.
 
 # How this thing works
 # ====================
@@ -44,6 +45,7 @@ use strict;
 use DateTime;
 use File::Path qw(make_path remove_tree);
 use Text::Sprintf::Named qw(named_sprintf);
+use String::ShellQuote;
 use v5.14;
 use Data::Dumper;
 
@@ -83,13 +85,15 @@ sub new {
                                         remotemv    => '/bin/mv %(source)s %(dest)s',
 
                                         rsyncremote => '%(user)s@%(host)s:%(path)s',
-                                        rsyncdry    => '/usr/bin/rsync -az --delete %(exclude)s %(include)s %(compare)s --dry-run --stats %(source)s %(dest)s 2>&1',
-                                        rsync       => '/usr/bin/rsync -az --delete %(exclude)s %(include)s %(compare)s --stats %(source)s %(dest)s 2>&1',
+                                        rsyncdry    => '/usr/bin/rsync -avz --delete %(exclude)s %(include)s %(compare)s --dry-run --stats %(source)s %(dest)s 2>&1',
+                                        rsync       => '/usr/bin/rsync -avz --delete %(exclude)s %(include)s %(compare)s --stats %(source)s %(dest)s 2>&1',
 
                                         names       => { full        => 'full_',
                                                          incremental => 'inc_',
                                         },
                                         dateformat  => '%Y%m%d-%H%M',
+
+                                        margin      => 10240, # 10MB margin is 10240KB
 
                                         @_)
         or return undef;
@@ -109,41 +113,79 @@ sub new {
 # ============================================================================
 #  Interface
 
+## @method $ backup(%args)
+# Perform a backup operation. This uses the specified arguments, along with the
+# object-defined paths and commands, to perform a backup of a local directory
+# tree to a remote system. Supported arguments are:
+#
+# - `name`:        a human-readable name for the backup.
+# - `remotedir`:   the name of the backup directory (relative to the global base path)
+# - `localdir`:    the local directory to back up
+# - `exclude`:     a comma-separated list of rsync exclude rules
+# - `excludefile`: the full path of a local file containing rsync exclude rules
+# - `include`:     a comma-separated list of rsync include rules
+# - `includefile`: the full path of a local file containing rsync include rules
+#
+# @param args A hash, or reference to a hash, of arguments to determine what
+#             needs to be backed up.
+# @return True on success (or no action needed), undef on error.
 sub backup {
     my $self = shift;
-    my %args = @_;
+    my $args = Titor::hash_or_hashref(@_);
 
     $self -> clear_error();
 
+    $self -> {"logger"} -> info("Starting backup for ".$args -> {"name"});
+
     # Fetch the current list, and work out what needs to be done
-    my $backups = $self -> _remote_backup_list($args{"remotedir"})
+    my $backups = $self -> _remote_backup_list($args -> {"remotedir"})
         or return undef;
 
     my $ops = $self -> _backup_paths($backups);
+
+    print Dumper($ops);
+
+    # include/exclude path directives and the compare list
+    my ($include, $exclude) = ( $self -> _rsync_cludes("include", $args),
+                                $self -> _rsync_cludes("exclude", $args));
+
+    my $compare = $self -> _rsync_compare_dest($ops -> {"comparelist"});
+
+    # Before actually doing anything to the remote, we need to check there will be enough space there
+    my $dryremote =  named_sprintf($self -> {"rsyncremote"}, user => $self -> {"sshuser"},
+                                                             host => $self -> {"sshhost"},
+                                                             path => Titor::path_join($ops -> {"backuppath"}, $ops -> {"rename"} || $ops -> {"backupdir"}));
+
+    # Undef from the size check indicates there isn't space.
+    my $space = $self -> _rsync_size_check($exclude, $include, $compare, $args -> {"localdir"}, $ops -> {"backuppath"}, $dryremote);
+    return undef unless(defined($space));
+
+    # 0 indicates that there are no changes
+    if(!$space) {
+        $self -> {"logger"} -> info("No changes made to ".$args -> {"name"}." since last backup; skipping");
+        return 1;
+    }
 
     # If there's a rename required, do it.
     $self -> _remote_rename($ops -> {"backuppath"}, $ops -> {"rename"}, $ops -> {"backupdir"}) or return undef
         if($ops -> {"rename"});
 
-    # Precalculate paths
-    # remote path
+    # Build the actual destination path now
     my $remotepath = Titor::path_join($ops -> {"backuppath"}, $ops -> {"backupdir"});
     my $remote     = named_sprintf($self -> {"rsyncremote"}, user => $self -> {"sshuser"},
                                                              host => $self -> {"sshhost"},
                                                              path => $remotepath);
 
-    # include/exclude path directives and the compare list
-    my ($include, $exclude) = ( $self -> _rsync_cludes("include", \%args),
-                                $self -> _rsync_cludes("exclude", \%args));
-
-    my $compare = $self -> _rsync_compare_dest($args{"comparelist"});
-
-    # Make sure we can do the backup
-    $self -> _rsync_size_check($exclude, $include, $compare, $args{"localdir"}, $ops -> {"backuppath"}, $remote)
+    # FIRE ZE MISSILES!
+    $self -> _rsync($exclude, $include, $compare, $args -> {"localdir"}, $remote)
         or return undef;
 
+    # and remove any incremental directories that need removing
+    $self -> _remote_delete($ops ->{"backuppath"}, $ops -> {"delete"}) or return undef
+        if(defined($ops -> {"delete"}) && scalar(@{$ops ->{"delete"}}));
 
-
+    $self -> {"logger"} -> info("Completed backup for ".$args -> {"name"});
+    return 1;
 }
 
 
@@ -429,7 +471,8 @@ sub _remote_rename {
 ## @method private $ _remote_space($path)
 # Determine how much space is available in the specified remote path.
 #
-# @param path The path to
+# @param path The path to determine the remaining space on.
+# @return The amount of space available on the specified path in KB.
 sub _remote_space {
     my $self = shift;
     my $path = shift;
@@ -447,6 +490,34 @@ sub _remote_space {
         unless(defined($size));
 
     return $size;
+}
+
+
+## @method private $ _remote_delete($base, $delete)
+# Given a base directory and a list of directories inside it, remove the specified
+# directories.
+#
+# @param base   The base directory containing the directories to delete
+# @param delete A reference to an array of directories to delete
+# @return true on success, undef on error.
+sub _remote_delete {
+    my $self   = shift;
+    my $base   = shift;
+    my $delete = shift;
+
+    $self -> clear_error();
+
+    # build the paths to delete
+    my @fullpaths = map { path_join($base, $_); } @{$delete};
+    my $allpaths  = join(' ', @fullpaths);
+
+    my $cmd = named_sprintf($self -> {"remoterm"}, path => $allpaths);
+
+    my ($status, $msg) = $self -> _ssh_cmd($cmd);
+    return $self -> self_error("Remote rm failed: '$msg'")
+        if($status);
+
+    return 1;
 }
 
 
@@ -514,9 +585,20 @@ sub _rsync_compare_dest {
 }
 
 
-## @method pricate % _rsyc_size_check($exclude, $include, $compare, $localdir, $remotebase, $remote)
+## @method private % _rsync_size_check($exclude, $include, $compare, $localdir, $remotebase, $remote)
+# Determine whether there is enough space on the remote system to perform the
+# rsync operation successfully. This does a dry run of the rsync operation, and
+# checks that the reported transfer size fits into the available space (with
+# some wiggle room)
 #
-#
+# @param exclude    The exclusion directives to pass to rsync.
+# @param include    The inclusion directives for rsync.
+# @param compare    Any --compare-dest directives to pass to rsync.
+# @param localdir   The source directory for the backup operation.
+# @param remotebase The remote backup base directory.
+# @param remote     The full rsync destination string.
+# @return True if enough space is availanle for the backup, 0 if there is nothing
+#         to do (no changes since last backup), under otherwise.
 sub _rsync_size_check {
     my $self       = shift;
     my $exclude    = shift;
@@ -537,13 +619,15 @@ sub _rsync_size_check {
     my $res = `$drycmd`;
     return $self -> self_error("Rsync dry-run failed: '$res'")
         if(${^CHILD_ERROR_NATIVE});
-
+    print $res;
     # We're really only interested in the number of bytes transferred
     my ($update) = $res =~ /^Total transferred file size: ([\d,]+) bytes$/m;
     return $self -> self_error("Unable to parse transfer size from '$res'")
         unless(defined($update));
 
     $update =~ s/,//g; # Pesky commas, begone.
+    return 0 if(!$update); # Stop here if there's nothing to send.
+
     $update /= 1024;   # And we want the size in K, not bytes.
 
     # How much space to we have remotely?
@@ -551,9 +635,52 @@ sub _rsync_size_check {
     return undef if(!defined($space));
 
     return $self -> self_error(sprintf("Insufficient space left on backup system: backup requires %.2fK, %.2fK available", $update, $space))
-        if($space < $update);
+        if($space < ($self -> {"margin"} + $update));
 
     $self -> {"logger"} -> info(sprintf("Backup requires %.2fK, %.2fK available", $update, $space));
+
+    return 1;
+}
+
+
+## @method private $ _rsync($exclude, $include, $compare, $localdir, $remote)
+# Invoke rsync to copy local data to the remote system.
+#
+# @param exclude    The exclusion directives to pass to rsync.
+# @param include    The inclusion directives for rsync.
+# @param compare    Any --compare-dest directives to pass to rsync.
+# @param localdir   The source directory for the backup operation.
+# @param remote     The full rsync destination string.
+# @return true on success, undef on error.
+sub _rsync {
+    my $self       = shift;
+    my $exclude    = shift;
+    my $include    = shift;
+    my $compare    = shift;
+    my $localdir   = shift;
+    my $remote     = shift;
+
+    my $cmd = named_sprintf($self -> {"rsync"}, exclude => $exclude,
+                                                include => $include,
+                                                compare => $compare,
+                                                source  => $localdir,
+                                                dest    => $remote);
+
+    $self -> {"logger"} -> info("Performing backup.");
+    $self -> {"logger"} -> info("Running command: $cmd");
+    my $res = `$cmd`;
+    return $self -> self_error("Rsync failed: '$res'")
+        if(${^CHILD_ERROR_NATIVE});
+    print $res;
+
+    my ($update) = $res =~ /^Total transferred file size: ([\d,]+) bytes$/m;
+    return $self -> self_error("Unable to parse transfer size from '$res'")
+        unless(defined($update));
+
+    $update =~ s/,//g; # Pesky commas, begone.
+    $update /= 1024;   # And we want the size in K, not bytes.
+
+    $self -> {"logger"} -> info(sprintf("Backup complete, %.2fKB transferred.", $update));
 
     return 1;
 }
