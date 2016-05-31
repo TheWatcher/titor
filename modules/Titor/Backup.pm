@@ -98,13 +98,12 @@ sub new {
                                         @_)
         or return undef;
 
+    # Verify required arguments are present
     return Titor::self_error("No remote backup path base specified") unless($self -> {"remotepath"});
     return Titor::self_error("No remote ssh user specified") unless($self -> {"sshuser"});
     return Titor::self_error("No remote ssh host specified") unless($self -> {"sshhost"});
     return Titor::self_error("Illegal full backup count specified") unless($self -> {"full_count"} && $self -> {"full_count"} > 0);
     return Titor::self_error("Illegal infremental backup count specified") unless($self -> {"inc_count"} && $self -> {"inc_count"} > 0);
-
-    # Precalculate the ssh command as much as possible.
 
     return $self;
 }
