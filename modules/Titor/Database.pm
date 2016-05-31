@@ -40,7 +40,12 @@ use Module::Load;
 sub new {
     my $invocant = shift;
     my $class    = ref($invocant) || $invocant;
-    my $self     = $class -> SUPER::new(@_)
+    my $self     = $class -> SUPER::new(sshbase      => '/usr/bin/ssh %(user)s@%(host)s "%(command)s" 2>&1',
+                                        sshuser      => undef,
+                                        sshhost      => undef,
+
+                                        backup_space =>
+                                        @_)
         or return undef;
 
     $self -> {"modules"} = { "mysql" => "Titor::Database::MySQL" };
