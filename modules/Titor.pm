@@ -53,6 +53,7 @@ sub new {
                      sshhost     => undef,
 
                      remotespace => '/bin/df -k --output=avail %(path)s',
+                     remoteused  => '/bin/du -ks %(path)s',
                      remoterm    => '/bin/rm -rf %(path)s',
 
                      dateformat  => '%Y%m%d-%H%M',
@@ -156,6 +157,31 @@ sub _remote_space {
         if($status);
 
     my ($size) = $msg =~ /Avail\s+(\d+)/;
+    return $self -> self_error("Unable to parse available space from result '$msg'")
+        unless(defined($size));
+
+    return $size;
+}
+
+
+## @method protected $ _remote_used($path)
+# Determine how much space has been used in the specified remote path.
+#
+# @param path The path to determine the used space for.
+# @return The amount of space used on the specified path in KB.
+sub _remote_used {
+    my $self = shift;
+    my $path = shift;
+
+    $self -> clear_error();
+
+    my $cmd = named_sprintf($self -> {"remoteused"}, path => $path);
+
+    my ($status, $msg) = $self -> _ssh_cmd($cmd);
+    return $self -> self_error("Remote du failed: '$msg'")
+        if($status);
+
+    my ($size) = $msg =~ /^(\d+)/;
     return $self -> self_error("Unable to parse available space from result '$msg'")
         unless(defined($size));
 
