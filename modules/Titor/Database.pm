@@ -40,11 +40,7 @@ use Module::Load;
 sub new {
     my $invocant = shift;
     my $class    = ref($invocant) || $invocant;
-    my $self     = $class -> SUPER::new(sshbase      => '/usr/bin/ssh %(user)s@%(host)s "%(command)s" 2>&1',
-                                        sshuser      => undef,
-                                        sshhost      => undef,
-
-                                        backup_space =>
+    my $self     = $class -> SUPER::new(backup_space => 204800,
                                         @_)
         or return undef;
 
