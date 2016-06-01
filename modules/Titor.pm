@@ -22,6 +22,8 @@
 package Titor;
 
 use parent qw(Exporter::Tiny);
+use Text::Sprintf::Named qw(named_sprintf);
+use String::ShellQuote;
 use v5.14;
 use strict;
 
@@ -44,10 +46,23 @@ BEGIN {
 sub new {
     my $invocant = shift;
     my $class    = ref($invocant) || $invocant;
-    my $self     = {
-        errstr => '',
-        @_,
-    };
+    my $self     = { errstr      => '',
+
+                     sshbase     => '/usr/bin/ssh %(user)s@%(host)s "%(command)s" 2>&1',
+                     sshuser     => undef,
+                     sshhost     => undef,
+
+                     remotespace => '/bin/df -k --output=avail %(path)s',
+                     remoterm    => '/bin/rm -rf %(path)s',
+
+                     dateformat  => '%Y%m%d-%H%M',
+
+                     @_ };
+
+    # Verify required arguments are present
+    return self_error("No remote backup path base specified") unless($self -> {"remotepath"});
+    return self_error("No remote ssh user specified") unless($self -> {"sshuser"});
+    return self_error("No remote ssh host specified") unless($self -> {"sshhost"});
 
     return bless $self, $class;
 }
@@ -96,8 +111,88 @@ sub path_join {
 
 
 # ============================================================================
-#  Miscellaneous functions
+#  Protected functions - remote commands
 
+## @method protected @ _ssh_cmd($cmd)
+# Execute the specified command on the remote host using SSH. This creates
+# a connection to the remote host over ssh, and runs the command, returning
+# the string result of the operation.
+#
+# @param cmd The command to run on the remote host.
+# @return An array of two values: the first is the exit status of the command
+#         (0 indicates both the command and ssh connection were successful,
+#         non-zero means an error occurred), the second is a string containing
+#         the output of the command (possibly including output from ssh on error)
+sub _ssh_cmd {
+    my $self = shift;
+    my $cmd  = shift;
+
+    my $sshcmd = named_sprintf($self -> {"sshbase"}, user    => $self -> {"sshuser"},
+                                                     host    => $self -> {"sshhost"},
+                                                     command => $cmd);
+
+    $self -> {"logger"} -> info("Running '$cmd' on remote system...");
+    my $res = `$sshcmd`;
+
+    return (${^CHILD_ERROR_NATIVE}, $res);
+}
+
+
+## @method protected $ _remote_space($path)
+# Determine how much space is available in the specified remote path.
+#
+# @param path The path to determine the remaining space on.
+# @return The amount of space available on the specified path in KB.
+sub _remote_space {
+    my $self = shift;
+    my $path = shift;
+
+    $self -> clear_error();
+
+    my $cmd = named_sprintf($self -> {"remotespace"}, path => $path);
+
+    my ($status, $msg) = $self -> _ssh_cmd($cmd);
+    return $self -> self_error("Remote df failed: '$msg'")
+        if($status);
+
+    my ($size) = $msg =~ /Avail\s+(\d+)/;
+    return $self -> self_error("Unable to parse available space from result '$msg'")
+        unless(defined($size));
+
+    return $size;
+}
+
+
+## @method protected $ _remote_delete($base, $delete)
+# Given a base directory and a list of directories inside it, remove the specified
+# directories.
+#
+# @param base   The base directory containing the directories to delete
+# @param delete A reference to an array of directories to delete
+# @return true on success, undef on error.
+sub _remote_delete {
+    my $self   = shift;
+    my $base   = shift;
+    my $delete = shift;
+
+    $self -> clear_error();
+
+    # build the paths to delete
+    my @fullpaths = map { path_join($base, $_); } @{$delete};
+    my $allpaths  = join(' ', @fullpaths);
+
+    my $cmd = named_sprintf($self -> {"remoterm"}, path => $allpaths);
+
+    my ($status, $msg) = $self -> _ssh_cmd($cmd);
+    return $self -> self_error("Remote rm failed: '$msg'")
+        if($status);
+
+    return 1;
+}
+
+
+# ============================================================================
+#  Miscellaneous functions
 
 ## @fn $ hash_or_hashref(@args)
 # Given a list of arguments, if the first argument is a hashref it is returned,
