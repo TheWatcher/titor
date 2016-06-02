@@ -39,18 +39,24 @@ BEGIN {
 #  Constructor and destructor
 
 ## @cmethod $ new(%args)
-# Create a new Titor object.
+# Create a new Titor object. The following arguments must be specified when
+# creating these object or subclasses of it:
+#
+# - `sshuser`:    the name of the user to use when connecting to the remote.
+# - `sshhost`:    the hostname or IP address of the remote system.
+# - `remotepath`: the location on the remote system where backups should go.
+# - `logger`:     a logger handle to log operations through.
 #
 # @param args A hash of key value pairs to initialise the object with.
 # @return A new Titor object, or undef if a problem occured.
 sub new {
     my $invocant = shift;
     my $class    = ref($invocant) || $invocant;
-    my $self     = { errstr      => '',
+    my $self     = { sshuser     => undef, # required
+                     sshhost     => undef, # required
+                     remotepath  => undef, # required
 
                      sshbase     => '/usr/bin/ssh %(user)s@%(host)s "%(command)s" 2>&1',
-                     sshuser     => undef,
-                     sshhost     => undef,
 
                      remotespace => '/bin/df -k --output=avail %(path)s',
                      remoteused  => '/bin/du -ks %(path)s',
@@ -58,12 +64,14 @@ sub new {
 
                      dateformat  => '%Y%m%d-%H%M',
 
+                     errstr      => '',
                      @_ };
 
     # Verify required arguments are present
-    return self_error("No remote backup path base specified") unless($self -> {"remotepath"});
-    return self_error("No remote ssh user specified") unless($self -> {"sshuser"});
-    return self_error("No remote ssh host specified") unless($self -> {"sshhost"});
+    return set_error("No remote backup path base specified") unless($self -> {"remotepath"});
+    return set_error("No remote ssh user specified") unless($self -> {"sshuser"});
+    return set_error("No remote ssh host specified") unless($self -> {"sshhost"});
+    return set_error("No logger object specified") unless($self -> {"logger"});
 
     return bless $self, $class;
 }

@@ -72,18 +72,13 @@ use v5.14;
 #  Constructor
 
 ## @cmethod $ new(%args)
-# Create a new Backup object to handle remote backup handling. The
-# supported arguments that must be provided are:
-#
-# - `sshuser`:    the name of the user to use when connecting to the remote.
-# - `sshhost`:    the hostname or IP address of the remote system.
-# - `remotepath`: the location on the remote system where backups should go.
-# - `logger`:     a logger handle to log operations through.
-#
-# Optional arguments are:
+# Create a new Backup object to handle remote backup handling. Please see the
+# documentation for the Titor::new() function for required arguments. Optional
+# arguments are:
 #
 # - `full_count`: the number of full backups to make. Must be > 0, defaults to 2.
 # - `inc_count`:  the number of incremental backups to make per full backup, defaults to 10.
+# - `margin`:     how much space must be left over on the drive after backup.
 #
 # @param args A hash of key value pairs to initialise the object with.
 # @return A new Backup object, or undef if a problem occured.
@@ -92,6 +87,7 @@ sub new {
     my $class    = ref($invocant) || $invocant;
     my $self     = $class -> SUPER::new(full_count  => 2,
                                         inc_count   => 10,
+                                        margin      => 1048576, # 1GB margin in KB
 
                                         remotedirs  => '/bin/ls -1 %(path)s',
                                         remotemv    => '/bin/mv %(source)s %(dest)s',
@@ -103,8 +99,6 @@ sub new {
                                         names       => { full        => 'full_',
                                                          incremental => 'inc_',
                                         },
-
-                                        margin      => 10240, # 10MB margin is 10240KB
 
                                         @_)
         or return undef;

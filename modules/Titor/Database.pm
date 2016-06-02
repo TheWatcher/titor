@@ -30,17 +30,23 @@ use Module::Load;
 #  Constructor
 
 ## @cmethod $ new(%args)
-# Create a new database object to handle dynamic loading of database-specific backup
-# modules. The supported arguments that may be provided are:
+# Create a new database object to handle dynamic loading of database-specific
+# backup modules and common database backup operations. Please see the
+# documentation for the Titor::new() function for required arguments. Optional
+# arguments are:
 #
-# - `logger`: a logger handle to log operations through.
+# - `backup_space`: The amount of space that database backups may occupy,
+#                   in KB. Defaults to 2097152 (2GB)
 #
 # @param args A hash of key value pairs to initialise the object with.
 # @return A new Database object, or undef if a problem occured.
 sub new {
     my $invocant = shift;
     my $class    = ref($invocant) || $invocant;
-    my $self     = $class -> SUPER::new(backup_space => 204800,
+    my $self     = $class -> SUPER::new(backup_space => 2097152,
+
+                                        remotedirs  => '/bin/ls -1 %(path)s',
+
                                         @_)
         or return undef;
 
@@ -48,7 +54,6 @@ sub new {
 
     return $self;
 }
-
 
 
 # ============================================================================
@@ -92,6 +97,15 @@ sub load_module {
 
 # ============================================================================
 #  Interface
+
+sub backup {
+    my $self   = shift;
+    my $backup = shift;
+    my $name   = shift;
+
+
+}
+
 
 # All subclasses should implement both of these methods.
 
