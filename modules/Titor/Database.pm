@@ -45,11 +45,12 @@ sub new {
     my $class    = ref($invocant) || $invocant;
     my $self     = $class -> SUPER::new(backup_space => 2097152,
 
-                                        remotedirs  => '/bin/ls -1 %(path)s',
+                                        remotedirs  => '/usr/bin/find %(path)s -maxdepth 1 -printf "%T@ %s %p\n" | sort',
 
                                         @_)
         or return undef;
 
+    # Registration of known database backup modules.
     $self -> {"modules"} = { "mysql" => "Titor::Database::MySQL" };
 
     return $self;
@@ -98,10 +99,19 @@ sub load_module {
 # ============================================================================
 #  Interface
 
+
+## @method $ backup($backupfile, $name)
+#
+# @param backupfile The full name of the local backup file.
+# @param name       The remote backup directory name relative to $self -> {"remotepath"}
+# @return true on success, undef on error.
 sub backup {
-    my $self   = shift;
-    my $backup = shift;
-    my $name   = shift;
+    my $self       = shift;
+    my $backupfile = shift;
+    my $name       = shift;
+
+    # Full directory on the remote where the backups should be stored
+    my $remote_path  = Titor::path_join($self -> {"remotepath"}, $name);
 
 
 }
