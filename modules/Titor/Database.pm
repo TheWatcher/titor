@@ -45,7 +45,8 @@ sub new {
     my $class    = ref($invocant) || $invocant;
     my $self     = $class -> SUPER::new(backup_space => 2097152,
 
-                                        remotedirs  => '/usr/bin/find %(path)s -maxdepth 1 -printf "%T@ %s %p\n" | sort',
+                                        # Lists files only in the specified directory, tab sep columns: timestamp, size, name
+                                        remotedirs  => '/usr/bin/find %(path)s -maxdepth 1 -type f -printf "%T@\t%s\t%p\n" | sort',
 
                                         @_)
         or return undef;
@@ -153,6 +154,42 @@ sub backup_all {
     my $self    = shift;
 
     return $self -> self_error("Call to unimplemented backup_all()");
+}
+
+# ============================================================================
+#  Private functions - remote commands
+
+## @method private $ _remote_list($path)
+# Fetch a list of the files in the specified path on the remote system, including
+# the time at which the file was last modified, and the size of the file. The
+# returned filenames are absolute if `path` is absolute.
+#
+# @param path The path to fetch the list of files for.
+# @return A reference to an array of hashes containing file data, oldest file
+#         first.
+sub _remote_list {
+    my $self = shift;
+    my $path = shift;
+
+    $self -> clear_error();
+
+    my $cmd = named_sprintf($self -> {"remotedirs"}, path => $path);
+
+    my ($status, $msg) = $self -> _ssh_cmd($cmd);
+    return $self -> self_error("Remote file list failed: '$msg'")
+        if($status);
+
+    my @files = ();
+    my @rows = split(/^/, $msg);
+    foreach my $row (@rows) {
+        my ($time, $size, $name) = $row =~ /^(\d+)\.\d+\t(\d+)\t(.*)$/;
+        return $self -> self_error("Unable to parse file information from '$row'")
+            unless($time && defined($size) && $name);
+
+        push(@files, { time => $time, size => $size, name => $name });
+    }
+
+    return \@files;
 }
 
 1;
