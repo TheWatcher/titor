@@ -58,11 +58,14 @@ sub new {
 
                      sshbase     => '/usr/bin/ssh %(user)s@%(host)s "%(command)s" 2>&1',
 
+                     remotemkdir => '/bin/mkdir -p %(path)s',
                      remotespace => '/bin/df -k --output=avail %(path)s',
                      remoteused  => '/bin/du -ks %(path)s',
                      remoterm    => '/bin/rm -rf %(path)s',
 
                      dateformat  => '%Y%m%d-%H%M',
+
+                     margin      => 1048576, # 1GB margin in KB
 
                      errstr      => '',
                      @_ };
@@ -144,6 +147,27 @@ sub _ssh_cmd {
     my $res = `$sshcmd`;
 
     return (${^CHILD_ERROR_NATIVE}, $res);
+}
+
+
+## @method protected $ _remote_mkpath($path)
+# Ensure that the specified path exists on the remote system.
+#
+# @param path The path to create if it does not already exist.
+# @return True on success, undef on error.
+sub _remote_mkpath {
+    my $self = shift;
+    my $path = shift;
+
+    $self -> clear_error();
+
+    my $cmd = named_sprintf($self -> {"remotemkdir"}, path => $path);
+
+    my ($status, $msg) = $self -> _ssh_cmd($cmd);
+    return $self -> self_error("Remote mkdir failed: '$msg'")
+        if($status);
+
+    return 1;
 }
 
 
