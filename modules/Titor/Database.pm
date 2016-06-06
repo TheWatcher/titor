@@ -48,6 +48,8 @@ sub new {
                                         # Lists files only in the specified directory, tab sep columns: timestamp, size, name
                                         remotedirs  => '/usr/bin/find %(path)s -maxdepth 1 -type f -printf "%T@\t%s\t%p\n" | sort',
 
+                                        copycmd => '/usr/bin/scp -q %(source)s %(user)s@%(host)s:%(dest)s',
+
                                         @_)
         or return undef;
 
@@ -111,14 +113,42 @@ sub backup {
     my $backupfile = shift;
     my $name       = shift;
 
+    $self -> clear_error();
+
     # Full directory on the remote where the backups should be stored
     my $remote_path  = Titor::path_join($self -> {"remotepath"}, $name);
+    $self -> _remote_mkpath($remote_path)
+        or return undef;
 
+    my $size = -s $backupfile;
+    $self -> self_error("Unable to obtain size for backup file '$backupfile'")
+        unless(defined($size));
 
+    $self -> self_error("Specified backup file is empty")
+        if(!$size);
+
+    # Ensure there's enough space
+    $self -> _remote_check($remote_path, $size / 1024)
+        or return undef;
+
+    # Do the copy!
+    my $scpcmd = named_sprintf($self -> {"copycmd"}, user   => $self -> {"sshuser"},
+                                                     host   => $self -> {"sshhost"},
+                                                     source => $backupfile,
+                                                     dest   => $remote_path);
+
+    $self -> {"logger"} -> info("Running '$cmd' to copy to remote...");
+    my $res = `$scpcmd`;
+    return $self -> self_error("Unable to copy backup: $res")
+        if(${^CHILD_ERROR_NATIVE});
+
+    $self -> {"logger"} -> info("Database backup successfully sent to remote.");
+
+    return 1;
 }
 
 
-# All subclasses should implement both of these methods.
+# IMPORTANT: All subclasses must implement both of these methods.
 
 # @method $ backup_database($name, $outdir, $now)
 # Back up the specified database to a file in the output directory. This will run the
@@ -156,8 +186,59 @@ sub backup_all {
     return $self -> self_error("Call to unimplemented backup_all()");
 }
 
+
 # ============================================================================
-#  Private functions - remote commands
+#  Private functions - remote work
+
+## @method private $ _remote_check($path, $size)
+# Determine whether there is sufficient space on the remote system to store
+# a backup with the specified size, potentially deleting old backups to make
+# space as needed.
+#
+# @param path The remote path that should contain the backup.
+# @param size The size of the backup file in KB.
+# @return true on success, undef on error.
+sub _remote_check {
+    my $self = shift;
+    my $path = shift;
+    my $size = shift;
+
+    $self -> clear_error();
+
+    # how much space is the remote using?
+    my $used = $self -> _remote_used($path);
+    return undef unless(defined($used));
+
+    # Is there enough space for the backup?
+    my $remain = $self -> {"backup_space"} - ($used + $self -> {"margin"});
+    return 1 if($remain >= $size);
+
+    # not enough space, pull the list of backups so they can be deleted
+    my $backups = $self -> _remote_list($path)
+        or return undef;
+
+    # work out which backups need to be deleted to free space
+    foreach my $backup (@{$backups}) {
+        $backup -> {"delete"} = 1;
+
+        $remain += $backup -> {"size"};
+        last if($remain >= $size);
+    }
+
+    return $self -> self_error("Unable to delete enough backups to make space for new backup")
+        unless($remain >= $size);
+
+    # There should be space after deletes, so do them
+    foreach my $backup (@{$backups}) {
+        last if(!$backup -> {"delete"});
+
+        $self -> _remote_delete($backup -> {"path"})
+            or return undef;
+    }
+
+    return 1;
+}
+
 
 ## @method private $ _remote_list($path)
 # Fetch a list of the files in the specified path on the remote system, including
