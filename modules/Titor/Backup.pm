@@ -87,7 +87,6 @@ sub new {
     my $class    = ref($invocant) || $invocant;
     my $self     = $class -> SUPER::new(full_count  => 2,
                                         inc_count   => 10,
-                                        margin      => 1048576, # 1GB margin in KB
 
                                         remotedirs  => '/bin/ls -1 %(path)s',
                                         remotemv    => '/bin/mv %(source)s %(dest)s',
@@ -397,8 +396,12 @@ sub _remote_backup_list {
 
     $self -> clear_error();
 
-    # Invoke the remote list
+    # Check the remote path exists.
     my $remote_path  = Titor::path_join($self -> {"remotepath"}, $name);
+    $self -> _remote_mkpath($remote_path)
+        or return undef;
+
+    # Invoke the remote list
     my ($code, $res) = $self -> _ssh_cmd(named_sprintf($self -> {"remotedirs"}, path => $remote_path));
 
     return $self -> self_error("Unable to list remote backups, response was: '$res'")
