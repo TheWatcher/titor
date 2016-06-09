@@ -126,6 +126,9 @@ sub new {
 # - `include`:     a comma-separated list of rsync include rules
 # - `includefile`: the full path of a local file containing rsync include rules
 #
+# In addition, the constructor arguments may be specified here to locally
+# override the settings.
+#
 # @param args A hash, or reference to a hash, of arguments to determine what
 #             needs to be backed up.
 # @return True on success (or no action needed), undef on error.
@@ -135,11 +138,13 @@ sub backup {
 
     $self -> clear_error();
 
+    $self -> _merge_settings($args);
+
     $self -> {"logger"} -> info("Starting backup for ".$args -> {"name"});
 
     # Fetch the current list, and work out what needs to be done
     my $backups = $self -> _remote_backup_list($args -> {"remotedir"})
-        or return undef;
+        or return $self -> _restore_settings(undef);
 
     my $ops = $self -> _backup_paths($backups);
 
@@ -156,16 +161,16 @@ sub backup {
 
     # Undef from the size check indicates there isn't space.
     my $space = $self -> _rsync_size_check($exclude, $include, $compare, $args -> {"localdir"}, $ops -> {"backuppath"}, $dryremote);
-    return undef unless(defined($space));
+    return $self -> _restore_settings(undef) unless(defined($space));
 
     # 0 indicates that there are no changes
     if(!$space) {
         $self -> {"logger"} -> info("No changes made to ".$args -> {"name"}." since last backup; skipping");
-        return 1;
+        return $self -> _restore_settings(1);
     }
 
     # If there's a rename required, do it.
-    $self -> _remote_rename($ops -> {"backuppath"}, $ops -> {"rename"}, $ops -> {"backupdir"}) or return undef
+    $self -> _remote_rename($ops -> {"backuppath"}, $ops -> {"rename"}, $ops -> {"backupdir"}) or return $self -> _restore_settings(undef)
         if($ops -> {"rename"});
 
     # Build the actual destination path now
@@ -176,14 +181,14 @@ sub backup {
 
     # FIRE ZE MISSILES!
     $self -> _rsync($exclude, $include, $compare, $args -> {"localdir"}, $remote)
-        or return undef;
+        or return $self -> _restore_settings(undef);
 
     # and remove any incremental directories that need removing
-    $self -> _remote_delete($ops ->{"backuppath"}, $ops -> {"delete"}) or return undef
+    $self -> _remote_delete($ops ->{"backuppath"}, $ops -> {"delete"}) or return $self -> _restore_settings(undef)
         if(defined($ops -> {"delete"}) && scalar(@{$ops ->{"delete"}}));
 
     $self -> {"logger"} -> info("Completed backup for ".$args -> {"name"});
-    return 1;
+    return $self -> _restore_settings(1);
 }
 
 
@@ -604,6 +609,50 @@ sub _rsync {
     $self -> {"logger"} -> info(sprintf("Backup complete, %.2fKB transferred.", $update));
 
     return 1;
+}
+
+
+# ============================================================================
+#  Private functions - settings support
+
+
+## @method private void _merge_settings($args)
+# Merge any count and margin settings specified in the arguments into the
+# object settings. This will back up the current settings before changing
+# them so they may be restored with _restore_settings().
+#
+# @param args A reference to a hash of arguments.
+sub _merge_settings {
+    my $self = shift;
+    my $args = shift;
+
+    # Back up the settings in case we need to restore them later
+    $self -> {"backup"} = { full_count => $self -> {"full_count"},
+                            inc_count  => $self -> {"inc_count"},
+                            margin     => $self -> {"margin"}
+    };
+
+
+    $self -> {"full_count"} if($args -> {"full_count"} && $args -> {"full_count"} > 0);
+    $self -> {"inc_count"}  if($args -> {"inc_count"} && $args -> {"inc_count"} > 0);
+    $self -> {"margin"}     if($args -> {"margin"} && $args -> {"margin"} > 0);
+}
+
+
+## @method private $ _restore_settings($retval)
+# Restore the settings backed up in _merge_settings().
+#
+# @param retval The value to return.
+# @return The value specified in retval.
+sub _restore_settings {
+    my $self   = shift;
+    my $retval = shift;
+
+    $self -> {"full_count"} = $self -> {"backup"} -> {"full_count"};
+    $self -> {"inc_count"}  = $self -> {"backup"} -> {"inc_count"};
+    $self -> {"margin"}     = $self -> {"backup"} -> {"margin"};
+
+    return $retval;
 }
 
 1;
