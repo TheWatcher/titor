@@ -137,7 +137,7 @@ sub backup {
                                                      source => $backupfile,
                                                      dest   => $remote_path);
 
-    $self -> {"logger"} -> info("Running '$cmd' to copy to remote...");
+    $self -> {"logger"} -> info("Running '$scpcmd' to copy to remote...");
     my $res = `$scpcmd`;
     return $self -> self_error("Unable to copy backup: $res")
         if(${^CHILD_ERROR_NATIVE});
