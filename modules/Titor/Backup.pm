@@ -633,9 +633,10 @@ sub _merge_settings {
     };
 
 
-    $self -> {"full_count"} if($args -> {"full_count"} && $args -> {"full_count"} > 0);
-    $self -> {"inc_count"}  if($args -> {"inc_count"} && $args -> {"inc_count"} > 0);
-    $self -> {"margin"}     if($args -> {"margin"} && $args -> {"margin"} > 0);
+    $self -> {"full_count"} = $args -> {"full_count"} if($args -> {"full_count"} && $args -> {"full_count"} > 0);
+    $self -> {"inc_count"}  = $args -> {"inc_count"}  if($args -> {"inc_count"} && $args -> {"inc_count"} > 0);
+    $self -> {"margin"}     = Titor::dehumanise($args -> {"margin"})
+        if($args -> {"margin"} && $args -> {"margin"} =~ /^\d+/);
 }
 
 
