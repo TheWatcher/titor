@@ -1,0 +1,32 @@
+[client]
+name       = clientname
+tmpdir     = /root/backup       # Local temporary backup directory (must be large enough to store a complete DB dump)
+
+[server]
+user       = usernamehere       # Remote username, avoid using root for safety.
+hostname   = your.server.here   # The hostname of the server to back up onto.
+base       = /backup            # The remote directory to store backups in; must be absolute.
+dbsize     = 5G                 # The maximum space occupied by a given database backup dir.
+full_count = 2                  # How many full backups to keep at any time
+inc_count  = 10                 # How many incrementals to keep
+margin     = 2G                 # How much space should remain on the remote after backups?
+
+[database.0]
+type       = mysql              # The type of database; see Titor::Database for supported types.
+username   = usernamehere       # Deprecated database username.
+password   = PASSWORD           # Deprecated database password.
+loginpath  = local.path         # Login path to use for auth, see https://dev.mysql.com/doc/mysql-utilities/1.6/en/mysql-utils-intro-connspec-mylogin.cnf.html
+dbname     =                    # Database name to backup; leave blank to backup all databases.
+dumpname   = $[client,name]     # The name of the database dump directory (and file, if backing up all)
+
+[directory.0]
+name       = backupname         # The name of the backup
+remotedir  = $[client,name]-dir # The remote directory name
+localdir   = /var/dir/          # The local directory to back up
+# exclude  =                    # An optional comma-separated list of exclude rules for rsync
+# excludefile =                 # Full path to a file containing exclude rules for rsync
+# include  =                    # An optional comma-separated list of include rules for rsync
+# includefile =                 # Full path to a file containing include rules for rsync
+# full_count = 1                # Override the global full count
+# inc_count  = 20               # Override the global incremental count
+# margin     = 10G              # Override the global reserved space
