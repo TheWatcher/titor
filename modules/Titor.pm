@@ -27,7 +27,7 @@ use String::ShellQuote;
 use v5.14;
 use strict;
 
-our @EXPORT_OK = qw(path_join hash_or_hashref array_or_arrayref);
+our @EXPORT_OK = qw(path_join hash_or_hashref array_or_arrayref dehumanise);
 our $errstr;
 
 BEGIN {
@@ -293,6 +293,34 @@ sub array_or_arrayref {
     return \@args;
 }
 
+
+## @fn $ dehumanise($number)
+# Given a number (which may end in K, M, G, or KB, MB, GB) return a number that
+# is the equivalent in bytes. This is the opposite of the humanise() function,
+# in that it can, for example, take a number like 20G and return the value
+# 21474836480.
+#
+# @param number The number to convert to bytes.
+# @param The machine-usable version of the number.
+sub dehumanise {
+    my $number = shift;
+
+    # pull out the number, and the multiplier if present
+    my ($num, $multi) = $number =~ /^(\d+(?:\.\d+)?)(K|M|G)?B?$/;
+
+    # If no multiplier is present or recognised, return the number as-is
+    if(!$multi) {
+        return $num;
+
+    # Otherwise, deal with KB, MB, and GB.
+    } elsif($multi eq "K") {
+        return $num * 1024;
+    } elsif($multi eq "M") {
+        return $num * 1048576;
+    } elsif($multi eq "G") {
+        return $num * 1073741824;
+    }
+}
 
 # ============================================================================
 #  Error functions
