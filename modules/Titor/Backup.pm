@@ -545,7 +545,7 @@ sub _rsync_size_check {
     my $res = `$drycmd`;
     return $self -> self_error("Rsync dry-run failed: '$res'")
         if(${^CHILD_ERROR_NATIVE});
-    print $res;
+
     # We're really only interested in the number of bytes transferred
     my ($update) = $res =~ /^Total transferred file size: ([\d,]+) bytes$/m;
     return $self -> self_error("Unable to parse transfer size from '$res'")
