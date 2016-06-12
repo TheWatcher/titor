@@ -76,7 +76,10 @@ sub load_module {
     my $name = shift;
     my %args = @_;
 
-    $args{"logger"} = $self -> {"logger"};
+    # Merge important self values into args for simplicity
+    foreach my $cfg ("logger", "sshhost", "sshuser", "remotepath") {
+        $args{$cfg} = $self -> {$cfg} unless($args{$cfg});
+    }
 
     # Convert name to a module name, unless it is one.
     $name = $self -> {"modules"} -> {$name}
