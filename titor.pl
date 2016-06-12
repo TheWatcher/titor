@@ -52,7 +52,7 @@ sub load_config {
         if($mode & 07177);
 
     # Load the configuration
-    my $confighash = ConfigMicro -> new(path_join($path, "config", $configfile.".cfg"))
+    my $confighash = Titor::ConfigMicro -> new(path_join($path, "config", $configfile.".cfg"))
         or $logger -> logdie("Unable to load configuration. Error was: $Titor::errstr");
 
     # Store the config name for later
