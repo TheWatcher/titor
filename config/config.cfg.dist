@@ -1,15 +1,16 @@
 [client]
-name       = clientname
-tmpdir     = /root/backup       # Local temporary backup directory (must be large enough to store a complete DB dump)
+name          = clientname
+tmpdir        = /root/backup       # Local temporary backup directory (must be large enough to store a complete DB dump)
 
 [server]
-user       = usernamehere       # Remote username, avoid using root for safety.
-hostname   = your.server.here   # The hostname of the server to back up onto.
-base       = /backup            # The remote directory to store backups in; must be absolute.
-dbsize     = 5G                 # The maximum space occupied by a given database backup dir.
-full_count = 2                  # How many full backups to keep at any time
-inc_count  = 10                 # How many incrementals to keep
-margin     = 2G                 # How much space should remain on the remote after backups?
+user          = usernamehere     # Remote username, avoid using root for safety.
+hostname      = your.server.here # The hostname of the server to back up onto.
+base          = /backup          # The remote directory to store backups in; must be absolute.
+dbsize        = 5G               # The maximum space occupied by a given database backup dir.
+full_count    = 2                # How many full backups to keep at any time
+inc_count     = 10               # How many incrementals to keep
+margin        = 2G               # How much space should remain on the remote after backups?
+rsync_verbose = 1                # Should the list of files copied by rsync be printed after finishing?
 
 [database.0]
 name       = $[client,name]-dbs # The name of the database dump directory (and file, if backing up all)
@@ -30,3 +31,4 @@ localdir   = /var/dir/          # The local directory to back up
 # full_count = 1                # Override the global full count
 # inc_count  = 20               # Override the global incremental count
 # margin     = 10G              # Override the global reserved space
+# rsync_verbose = 1             # Override the global rsyn verbosity flag

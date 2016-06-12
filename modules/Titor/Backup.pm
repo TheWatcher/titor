@@ -76,27 +76,29 @@ use v5.14;
 # documentation for the Titor::new() function for required arguments. Optional
 # arguments are:
 #
-# - `full_count`: the number of full backups to make. Must be > 0, defaults to 2.
-# - `inc_count`:  the number of incremental backups to make per full backup, defaults to 10.
-# - `margin`:     how much space must be left over on the drive after backup.
+# - `full_count`:    the number of full backups to make. Must be > 0, defaults to 2.
+# - `inc_count`:     the number of incremental backups to make per full backup, defaults to 10.
+# - `margin`:        how much space must be left over on the drive after backup.
+# - `rsync_verbose`: show the list of copied files after rsync
 #
 # @param args A hash of key value pairs to initialise the object with.
 # @return A new Backup object, or undef if a problem occured.
 sub new {
     my $invocant = shift;
     my $class    = ref($invocant) || $invocant;
-    my $self     = $class -> SUPER::new(full_count  => 2,
-                                        inc_count   => 10,
+    my $self     = $class -> SUPER::new(full_count    => 2,
+                                        inc_count     => 10,
 
-                                        remotedirs  => '/bin/ls -1 %(path)s',
-                                        remotemv    => '/bin/mv %(source)s %(dest)s',
+                                        remotedirs    => '/bin/ls -1 %(path)s',
+                                        remotemv      => '/bin/mv %(source)s %(dest)s',
 
-                                        rsyncremote => '%(user)s@%(host)s:%(path)s',
-                                        rsyncdry    => '/usr/bin/rsync -avz --delete %(exclude)s %(include)s %(compare)s --dry-run --stats %(source)s %(dest)s 2>&1',
-                                        rsync       => '/usr/bin/rsync -avz --delete %(exclude)s %(include)s %(compare)s --stats %(source)s %(dest)s 2>&1',
+                                        rsyncremote   => '%(user)s@%(host)s:%(path)s',
+                                        rsyncdry      => '/usr/bin/rsync -avz --delete %(exclude)s %(include)s %(compare)s --dry-run --stats %(source)s %(dest)s 2>&1',
+                                        rsync         => '/usr/bin/rsync -avz --delete %(exclude)s %(include)s %(compare)s --stats %(source)s %(dest)s 2>&1',
+                                        rsync_verbose => 0,
 
-                                        names       => { full        => 'full_',
-                                                         incremental => 'inc_',
+                                        names         => { full        => 'full_',
+                                                           incremental => 'inc_',
                                         },
 
                                         @_)
@@ -597,7 +599,9 @@ sub _rsync {
     my $res = `$cmd`;
     return $self -> self_error("Rsync failed: '$res'")
         if(${^CHILD_ERROR_NATIVE});
-    print $res;
+
+    # Show what's been copied if requested
+    print $res if($self -> {"rsync_verbose"});
 
     my ($update) = $res =~ /^Total transferred file size: ([\d,]+) bytes$/m;
     return $self -> self_error("Unable to parse transfer size from '$res'")
@@ -627,15 +631,17 @@ sub _merge_settings {
     my $args = shift;
 
     # Back up the settings in case we need to restore them later
-    $self -> {"backup"} = { full_count => $self -> {"full_count"},
-                            inc_count  => $self -> {"inc_count"},
-                            margin     => $self -> {"margin"}
+    $self -> {"backup"} = { full_count    => $self -> {"full_count"},
+                            inc_count     => $self -> {"inc_count"},
+                            margin        => $self -> {"margin"}
+                            rsync_verbose => $self -> {"rsync_verbose"}
     };
 
 
-    $self -> {"full_count"} = $args -> {"full_count"} if($args -> {"full_count"} && $args -> {"full_count"} > 0);
-    $self -> {"inc_count"}  = $args -> {"inc_count"}  if($args -> {"inc_count"} && $args -> {"inc_count"} > 0);
-    $self -> {"margin"}     = Titor::dehumanise($args -> {"margin"})
+    $self -> {"full_count"}    = $args -> {"full_count"}    if($args -> {"full_count"} && $args -> {"full_count"} > 0);
+    $self -> {"inc_count"}     = $args -> {"inc_count"}     if($args -> {"inc_count"} && $args -> {"inc_count"} > 0);
+    $self -> {"rsync_verbose"} = $args -> {"rsync_verbose"} if(defined($args -> {"rsync_verbose"}))
+    $self -> {"margin"}        = Titor::dehumanise($args -> {"margin"})
         if($args -> {"margin"} && $args -> {"margin"} =~ /^\d+/);
 }
 
@@ -649,9 +655,10 @@ sub _restore_settings {
     my $self   = shift;
     my $retval = shift;
 
-    $self -> {"full_count"} = $self -> {"backup"} -> {"full_count"};
-    $self -> {"inc_count"}  = $self -> {"backup"} -> {"inc_count"};
-    $self -> {"margin"}     = $self -> {"backup"} -> {"margin"};
+    $self -> {"full_count"}    = $self -> {"backup"} -> {"full_count"};
+    $self -> {"inc_count"}     = $self -> {"backup"} -> {"inc_count"};
+    $self -> {"rsync_verbose"} = $self -> {"backup"} -> {"rsync_verbose"};
+    $self -> {"margin"}        = $self -> {"backup"} -> {"margin"};
 
     return $retval;
 }
