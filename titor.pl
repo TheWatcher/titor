@@ -30,7 +30,7 @@ use Pod::Usage;
 use constant PIDFILENAME => "/var/run/titor/titor.pid";
 
 
-## @method $ load_config($config, $logger)
+## @fn $ load_config($config, $logger)
 # Given the name of a configuration file, attempt to load it from the config
 # directory.
 #
@@ -59,6 +59,28 @@ sub load_config {
     $confighash -> {"configname"} = $configfile;
 
     return $confighash;
+}
+
+
+## @fn $ process_section($section, $selected)
+# Determine whether to process the specified section. If no section
+# selection has been made by the user, this will always return true,
+# otherwise it will only return true when the section appears in the
+# selection list.
+#
+# @param section  The name of the section to check
+# @param selected A reference to a hash of section selections
+# @return true if the section should be processed, false otherwise.
+sub process_section {
+    my $section  = shift;
+    my $selected = shift;
+
+    # Always process sections if not section selection made
+    return 1 if(!$selected || !scalar(keys(%{$selected})));
+
+    # One or more section selections made, so only return true if
+    # the section appears in the selection.
+    return $selected -> {$section};
 }
 
 
@@ -112,7 +134,7 @@ if($pid_file -> create()) {
     foreach my $key (sort(keys(%$config))) {
         # Only process actual database entries...
         next unless($key =~ /^database.\d+$/);
-        next unless(process_section($key, \%sectmap));
+        next unless(process_section($config -> {$key} -> {"name"}, \%sectmap));
 
         my $dbhandle = $database -> load_module($config -> {$key} -> {"type"} || "mysql",
                                                 username  => $config -> {$key} -> {"username"},
@@ -146,9 +168,9 @@ if($pid_file -> create()) {
         or $logger -> logdie("Backup object create failed: ".$Titor::errstr);
 
     foreach my $key (sort(keys(%$config))) {
-        # Only process actual database entries...
-        next unless($key =~ /^database.\d+$/);
-        next unless(process_section($key, \%sectmap));
+        # Only process directory entries...
+        next unless($key =~ /^directory.\d+$/);
+        next unless(process_section($config -> {$key} -> {"name"}, \%sectmap));
 
         $backup -> backup($config -> {$key})
             or $logger -> logdie("Backup failed: ".$backup -> errstr());
@@ -176,7 +198,7 @@ titor.pl [OPTIONS]
     -h, -?, --help           Show a brief help message.
     -m, --man                Show full documentation.
     -c, --config             Name of the configuration to use.
-    -s, --section            Constrain processin to one or more sections.
+    -s, --section            Constrain processing to one or more sections.
 
 =head1 OPTIONS
 
