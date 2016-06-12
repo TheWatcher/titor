@@ -12,12 +12,12 @@ inc_count  = 10                 # How many incrementals to keep
 margin     = 2G                 # How much space should remain on the remote after backups?
 
 [database.0]
+name       = $[client,name]-dbs # The name of the database dump directory (and file, if backing up all)
 type       = mysql              # The type of database; see Titor::Database for supported types.
 username   = usernamehere       # Deprecated database username.
 password   = PASSWORD           # Deprecated database password.
 loginpath  = local.path         # Login path to use for auth, see https://dev.mysql.com/doc/mysql-utilities/1.6/en/mysql-utils-intro-connspec-mylogin.cnf.html
 dbname     =                    # Database name to backup; leave blank to backup all databases.
-dumpname   = $[client,name]     # The name of the database dump directory (and file, if backing up all)
 
 [directory.0]
 name       = backupname         # The name of the backup
