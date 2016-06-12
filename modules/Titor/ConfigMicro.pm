@@ -97,6 +97,7 @@ sub new {
     my $filename = shift;
     my $self     = $class -> SUPER::new(quote_values    => '"',
                                         inline_comments => 1,
+                                        minimal         => 1,
                                         @_)
         or return undef;
 

@@ -71,10 +71,12 @@ sub new {
                      @_ };
 
     # Verify required arguments are present
-    return set_error("No remote backup path base specified") unless($self -> {"remotepath"});
-    return set_error("No remote ssh user specified") unless($self -> {"sshuser"});
-    return set_error("No remote ssh host specified") unless($self -> {"sshhost"});
-    return set_error("No logger object specified") unless($self -> {"logger"});
+    if(!$self -> {"minimal"}) {
+        return set_error("No remote backup path base specified") unless($self -> {"remotepath"});
+        return set_error("No remote ssh user specified") unless($self -> {"sshuser"});
+        return set_error("No remote ssh host specified") unless($self -> {"sshhost"});
+        return set_error("No logger object specified") unless($self -> {"logger"});
+    }
 
     return bless $self, $class;
 }
