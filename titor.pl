@@ -17,16 +17,26 @@ BEGIN {
 }
 use lib "$path/modules"; # Add the script path for module loading
 
-use Titor qw(path_join);
+use Titor qw(path_join dehumanise);
 use Titor::Backup;
 use Titor::Database;
 use Titor::ConfigMicro;
 use Log::Log4perl;
 use PID::File;
+use Getopt::Long;
+use Pod::Usage;
 
-use constant PIDFILENAME => "/var/run/titor";
+# Where should the PID file go?
+use constant PIDFILENAME => "/var/run/titor/titor.pid";
 
 
+## @method $ load_config($config, $logger)
+# Given the name of a configuration file, attempt to load it from the config
+# directory.
+#
+# @param config  The name of the configuration file to load.
+# @param logger  A reference to a Log4perl object.
+# @return A reference to a configuration object on success, dies on error.
 sub load_config {
     my $config = shift;
     my $logger = shift;
@@ -38,19 +48,41 @@ sub load_config {
 
     # Bomb if the config file is not at most 600
     my $mode = (stat(path_join($path, "config", $configfile.".cfg")))[2];
-    $logger -> logdir("$configfile.cfg must have at most mode 600.\nFix the permissions on $configfile.cfg and try again.")
+    $logger -> logdie("$configfile.cfg must have at most mode 600.\nFix the permissions on $configfile.cfg and try again.")
         if($mode & 07177);
 
     # Load the configuration
-    my $config = ConfigMicro -> new(path_join($path, "config", $configfile.".cfg"))
-        or $logger -> logdie("Unable to load configuration. Error was: $Titor::errstr")
+    my $confighash = ConfigMicro -> new(path_join($path, "config", $configfile.".cfg"))
+        or $logger -> logdie("Unable to load configuration. Error was: $Titor::errstr");
 
     # Store the config name for later
-    $config -> {"configname"} = $configfile;
+    $confighash -> {"configname"} = $configfile;
 
-    return $config;
+    return $confighash;
 }
 
+
+my $man        = 0;  # Output the manual?
+my $help       = 0;  # Output the summary options
+my $configname = 'config'; # Which configuration should be loaded?
+my @sections   = (); # Constrain to specific sections?
+
+# Turn on bundling
+Getopt::Long::Configure("bundling");
+
+# Process the command line. Explicitly include abbreviations to get around the
+# counterintuitive behaviour of Getopt::Long regarding autoabbrev and bundling.
+GetOptions('c|config:s'  => \$configname,
+           's|section:s' => \@sections,
+           'h|help|?'    => \$help,
+           'm|man'       => \$man);
+
+# Send back the usage if help has been requested, or there's no files to process.
+pod2usage(-verbose => 0) if($help);
+pod2usage(-exitstatus => 0, -verbose => 2) if $man;
+
+# Convert any sections to a hash for faster lookup
+my %sectmap = map { $_ => 1 } @sections;
 
 Log::Log4perl -> init(path_join($path, "config", "logging.cnf"));
 my $logger = Log::Log4perl -> get_logger();
@@ -64,9 +96,88 @@ if($pid_file -> create()) {
     # clean up nicely as something Awful And Hideous may have happened that could
     # be made worse by additional runs; require user intervention!
 
+    my $config = load_config($configname, $logger);
 
+    $logger -> info("Starting processing of configuration '$configname'");
+
+    $logger -> info("Processing database backups");
+    my $database = Titor::Database -> new(logger       => $logger,
+                                          sshuser      => $config -> {"server"} -> {"user"},
+                                          sshhost      => $config -> {"server"} -> {"hostname"},
+                                          remotepath   => $config -> {"server"} -> {"base"},
+                                          backup_space => dehumanise($config -> {"server"} -> {"dbsize"}))
+        or $logger -> logdie("Database object create failed: ".$Titor::errstr);
+
+    # Back up databases
+    foreach my $key (sort(keys(%$config))) {
+        # Only process actual database entries...
+        next unless($key =~ /^database.\d+$/);
+        next unless(process_section($key, \%sectmap));
+
+        my $dbhandle = $database -> load_module($config -> {$key} -> {"type"} || "mysql",
+                                                username  => $config -> {$key} -> {"username"},
+                                                password  => $config -> {$key} -> {"password"},
+                                                loginpath => $config -> {$key} -> {"loginpath"})
+            or $logger -> logdie("Unable to load DB handler: ".$database -> errstr());
+
+        # Do the backup, if a name has been specified only backup that database.
+        my $outname;
+        if($config -> {$key} -> {"dbname"}) {
+            $outname = $dbhandle -> backup_database($config -> {$key} -> {"dbname"}, $config -> {"client"} -> {"tmpdir"})
+        } else {
+            $outname = $dbhandle -> backup_all($config -> {$key} -> {"dumpname"}, $config -> {"client"} -> {"tmpdir"});
+        }
+
+        $logger -> logdie("Unable to back up database: ".$dbhandle -> errstr())
+            unless($outname);
+
+        $database -> backup($outname, $config -> {$key} -> {"dumpname"})
+            or $logger -> logdie("Database backup failed: ".$database -> errstr());
+    }
+
+    # Back up directories
+    my $backup = Titor::Backup -> new(logger     => $logger,
+                                      sshuser    => $config -> {"server"} -> {"user"},
+                                      sshhost    => $config -> {"server"} -> {"hostname"},
+                                      remotepath => $config -> {"server"} -> {"base"},
+                                      full_count => $config -> {"server"} -> {"full_count"},
+                                      inc_count  => $config -> {"server"} -> {"inc_count"},
+                                      margin     => dehumanise($config -> {"server"} -> {"margin"}))
+        or $logger -> logdie("Backup object create failed: ".$Titor::errstr);
+
+    foreach my $key (sort(keys(%$config))) {
+        # Only process actual database entries...
+        next unless($key =~ /^database.\d+$/);
+        next unless(process_section($key, \%sectmap));
+
+        $backup -> backup($config -> {$key})
+            or $logger -> logdie("Backup failed: ".$backup -> errstr());
+    }
+
+    $logger -> info("Completed processing of configuration '$configname'");
 
     $pid_file -> remove();
 } else {
     $logger -> error("Unable to create PID file, aborting.");
 }
+
+# THE END!
+__END__
+
+=head1 NAME
+
+titor.pl - Remote incremental backup system.
+
+=head1 SYNOPSIS
+
+titor.pl [OPTIONS]
+
+ Options:
+    -h, -?, --help           Show a brief help message.
+    -m, --man                Show full documentation.
+    -c, --config             Name of the configuration to use.
+    -s, --section            Constrain processin to one or more sections.
+
+=head1 OPTIONS
+
+=over 8
