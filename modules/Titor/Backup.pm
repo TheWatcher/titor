@@ -561,7 +561,7 @@ sub _rsync_size_check {
     return undef if(!defined($space));
 
     return $self -> self_error(sprintf("Insufficient space left on backup system: backup requires %.2fK, %.2fK available", $update, $space))
-        if($space < ($self -> {"margin"} + $update));
+        if($space < (($self -> {"margin"} / 1024) + $update));
 
     $self -> {"logger"} -> info(sprintf("Backup requires %.2fK, %.2fK available", $update, $space));
 
