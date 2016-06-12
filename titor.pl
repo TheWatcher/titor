@@ -147,13 +147,13 @@ if($pid_file -> create()) {
         if($config -> {$key} -> {"dbname"}) {
             $outname = $dbhandle -> backup_database($config -> {$key} -> {"dbname"}, $config -> {"client"} -> {"tmpdir"})
         } else {
-            $outname = $dbhandle -> backup_all($config -> {$key} -> {"dumpname"}, $config -> {"client"} -> {"tmpdir"});
+            $outname = $dbhandle -> backup_all($config -> {$key} -> {"name"}, $config -> {"client"} -> {"tmpdir"});
         }
 
         $logger -> logdie("Unable to back up database: ".$dbhandle -> errstr())
             unless($outname);
 
-        $database -> backup($outname, $config -> {$key} -> {"dumpname"})
+        $database -> backup($outname, $config -> {$key} -> {"name"})
             or $logger -> logdie("Database backup failed: ".$database -> errstr());
     }
 
