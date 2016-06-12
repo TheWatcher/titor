@@ -22,8 +22,9 @@ package Titor::Database;
 
 use parent qw(Titor);
 use strict;
-use v5.14;
 use Module::Load;
+use Text::Sprintf::Named qw(named_sprintf);
+use v5.14;
 
 
 # ============================================================================
