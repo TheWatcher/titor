@@ -633,8 +633,8 @@ sub _merge_settings {
     # Back up the settings in case we need to restore them later
     $self -> {"backup"} = { full_count    => $self -> {"full_count"},
                             inc_count     => $self -> {"inc_count"},
-                            margin        => $self -> {"margin"}
-                            rsync_verbose => $self -> {"rsync_verbose"}
+                            margin        => $self -> {"margin"},
+                            rsync_verbose => $self -> {"rsync_verbose"},
     };
 
 
