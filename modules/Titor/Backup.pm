@@ -640,7 +640,7 @@ sub _merge_settings {
 
     $self -> {"full_count"}    = $args -> {"full_count"}    if($args -> {"full_count"} && $args -> {"full_count"} > 0);
     $self -> {"inc_count"}     = $args -> {"inc_count"}     if($args -> {"inc_count"} && $args -> {"inc_count"} > 0);
-    $self -> {"rsync_verbose"} = $args -> {"rsync_verbose"} if(defined($args -> {"rsync_verbose"}))
+    $self -> {"rsync_verbose"} = $args -> {"rsync_verbose"} if(defined($args -> {"rsync_verbose"}));
     $self -> {"margin"}        = Titor::dehumanise($args -> {"margin"})
         if($args -> {"margin"} && $args -> {"margin"} =~ /^\d+/);
 }
