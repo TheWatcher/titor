@@ -252,7 +252,7 @@ sub _remote_delete {
         $self -> _remote_mkpath($outpath)
             or return undef;
 
-        $cmd = named_sprintf($self -> {"removemv"}, source => $allpaths,
+        $cmd = named_sprintf($self -> {"remotemv"}, source => $allpaths,
                                                     dest   => $outpath);
     } else {
         $cmd = named_sprintf($self -> {"remoterm"}, path => $allpaths);
