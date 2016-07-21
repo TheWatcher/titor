@@ -62,6 +62,7 @@ sub new {
                      remotespace => '/bin/df -k --output=avail %(path)s',
                      remoteused  => '/bin/du -ks %(path)s',
                      remoterm    => '/bin/rm -rf %(path)s',
+                     remotemv    => '/bin/mv %(source)s %(dest)s',
 
                      dateformat  => '%Y%m%d-%H%M',
 
@@ -241,7 +242,21 @@ sub _remote_delete {
     my @fullpaths = map { path_join($base, $_); } @{$delete};
     my $allpaths  = join(' ', @fullpaths);
 
-    my $cmd = named_sprintf($self -> {"remoterm"}, path => $allpaths);
+    my $cmd;
+    if(lc($self -> {"cleanup_type"}) eq "move" && $self -> {"cleanup_dir"}) {
+        # Make the outpath relative to base, unless it's already absolute
+        my $outpath = $self -> {"cleanup_dir"};
+        $outpath = path_join($base, $outpath)
+            unless($outpath =~ /^\//);
+
+        $self -> _remote_mkpath($outpath)
+            or return undef;
+
+        $cmd = named_sprintf($self -> {"removemv"}, source => $allpaths,
+                                                    dest   => $outpath);
+    } else {
+        $cmd = named_sprintf($self -> {"remoterm"}, path => $allpaths);
+    }
 
     my ($status, $msg) = $self -> _ssh_cmd($cmd);
     return $self -> self_error("Remote rm failed: '$msg'")

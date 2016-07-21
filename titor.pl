@@ -178,13 +178,15 @@ if($pid_file -> create()) {
     }
 
     # Back up directories
-    my $backup = Titor::Backup -> new(logger     => $logger,
-                                      sshuser    => $config -> {"server"} -> {"user"},
-                                      sshhost    => $config -> {"server"} -> {"hostname"},
-                                      remotepath => $config -> {"server"} -> {"base"},
-                                      full_count => $config -> {"server"} -> {"full_count"},
-                                      inc_count  => $config -> {"server"} -> {"inc_count"},
-                                      margin     => dehumanise($config -> {"server"} -> {"margin"}))
+    my $backup = Titor::Backup -> new(logger       => $logger,
+                                      sshuser      => $config -> {"server"} -> {"user"},
+                                      sshhost      => $config -> {"server"} -> {"hostname"},
+                                      remotepath   => $config -> {"server"} -> {"base"},
+                                      full_count   => $config -> {"server"} -> {"full_count"},
+                                      inc_count    => $config -> {"server"} -> {"inc_count"},
+                                      cleanup_type => $config -> {"server"} -> {"cleanup_type"} // "delete",
+                                      cleanup_dir  => $config -> {"server"} -> {"cleanup_dir"},
+                                      margin       => dehumanise($config -> {"server"} -> {"margin"}))
         or $logger -> logdie("Backup object create failed: ".$Titor::errstr);
 
     foreach my $key (sort(keys(%$config))) {

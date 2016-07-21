@@ -11,6 +11,8 @@ full_count    = 2                # How many full backups to keep at any time
 inc_count     = 10               # How many incrementals to keep
 margin        = 2G               # How much space should remain on the remote after backups?
 rsync_verbose = 1                # Should the list of files copied by rsync be printed after finishing?
+cleanup_type  = move             # Set to 'move' to move files to delete into cleanup_dir, 'delete' to remove them
+cleanup_dir   = cleanup          # Name of cleanup directory, relative to base unless absolute
 
 [database.0]
 name       = $[client,name]-dbs # The name of the database dump directory (and file, if backing up all)
