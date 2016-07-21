@@ -1,5 +1,25 @@
 #!/usr/bin/perl -w
 
+## @file
+# Main backup script for the titor system. This script loads the modules
+# needed to back up databases and directories, and invokes them as needed
+# based on a configuration file.
+#
+# @author  Chris Page &lt;chris@starforge.co.uk&gt;
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 use strict;
 use v5.14;
 
@@ -75,7 +95,7 @@ sub process_section {
     my $section  = shift;
     my $selected = shift;
 
-    # Always process sections if not section selection made
+    # If no section selection made, always process the section
     return 1 if(!$selected || !scalar(keys(%{$selected})));
 
     # One or more section selections made, so only return true if
