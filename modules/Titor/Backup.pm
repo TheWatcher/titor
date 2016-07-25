@@ -186,7 +186,7 @@ sub backup {
         or return $self -> _restore_settings(undef);
 
     # and remove any incremental directories that need removing
-    $self -> _remote_delete($ops ->{"backuppath"}, $ops -> {"delete"}) or return $self -> _restore_settings(undef)
+    $self -> _remote_delete($ops ->{"backuppath"}, $ops -> {"delete"}, $self -> {"remotepath"}) or return $self -> _restore_settings(undef)
         if(defined($ops -> {"delete"}) && scalar(@{$ops ->{"delete"}}));
 
     $self -> {"logger"} -> info("Completed backup for ".$args -> {"name"});
