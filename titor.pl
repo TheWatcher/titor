@@ -41,12 +41,14 @@ use Titor qw(path_join dehumanise);
 use Titor::Backup;
 use Titor::Database;
 use Titor::ConfigMicro;
+use File::Path qw(make_path);
 use Log::Log4perl;
 use PID::File;
 use Getopt::Long;
 use Pod::Usage;
 
 # Where should the PID file go?
+use constant PIDPATH     => "/var/run/titor";
 use constant PIDFILENAME => "/var/run/titor/titor.pid";
 
 
@@ -129,6 +131,8 @@ my %sectmap = map { $_ => 1 } @sections;
 Log::Log4perl -> init(path_join($path, "config", "logging.cnf"));
 my $logger = Log::Log4perl -> get_logger();
 
+make_path(PIDPATH)
+    unless(-d PIDPATH);
 my $pid_file = PID::File -> new(file => PIDFILENAME);
 $logger -> logdie("Titor is already running. Only one Titor may exist at any time.")
     if($pid_file -> running());
