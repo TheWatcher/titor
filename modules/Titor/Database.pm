@@ -50,6 +50,7 @@ sub new {
                                         remotedirs  => '/usr/bin/find %(path)s -maxdepth 1 -type f -printf "%T@\t%s\t%p\n" | sort',
 
                                         copycmd => '/usr/bin/scp -q %(source)s %(user)s@%(host)s:%(dest)s',
+                                        rmcmd   => '/bin/rm -f %(archive)s',
 
                                         @_)
         or return undef;
@@ -124,11 +125,15 @@ sub backup {
     $self -> _remote_mkpath($remote_path)
         or return undef;
 
+    # backupfile must be a real plain file, not a directory/symlink/etc
+    return $self -> self_error("Backup file '$backupfile' is not a real file.")
+        unless(lstat $backupfile && -f _);
+
     my $size = -s $backupfile;
-    $self -> self_error("Unable to obtain size for backup file '$backupfile'")
+    return $self -> self_error("Unable to obtain size for backup file '$backupfile'")
         unless(defined($size));
 
-    $self -> self_error("Specified backup file is empty")
+    return $self -> self_error("Specified backup file is empty")
         if(!$size);
 
     # Ensure there's enough space
@@ -147,6 +152,14 @@ sub backup {
         if(${^CHILD_ERROR_NATIVE});
 
     $self -> {"logger"} -> info("Database backup successfully sent to remote.");
+
+    my $rmcmd = named_sprintf($self -> {"rmcmd"}, archive => $backupfile);
+    $self -> {"logger"} -> info("Running '$rmcmd' to delete temporary archive");
+    $res = `$rmcmd`;
+    return $self -> self_error("Unable to delete archive: $res")
+        if(${^CHILD_ERROR_NATIVE});
+
+    $self -> {"logger"} -> info("Database backup cleanup successful.");
 
     return 1;
 }
