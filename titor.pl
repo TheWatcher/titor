@@ -1,5 +1,25 @@
 #!/usr/bin/perl -w
 
+## @file
+# Main backup script for the titor system. This script loads the modules
+# needed to back up databases and directories, and invokes them as needed
+# based on a configuration file.
+#
+# @author  Chris Page &lt;chris@starforge.co.uk&gt;
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 use strict;
 use v5.14;
 
@@ -21,12 +41,14 @@ use Titor qw(path_join dehumanise);
 use Titor::Backup;
 use Titor::Database;
 use Titor::ConfigMicro;
+use File::Path qw(make_path);
 use Log::Log4perl;
 use PID::File;
 use Getopt::Long;
 use Pod::Usage;
 
 # Where should the PID file go?
+use constant PIDPATH     => "/var/run/titor";
 use constant PIDFILENAME => "/var/run/titor/titor.pid";
 
 
@@ -75,7 +97,7 @@ sub process_section {
     my $section  = shift;
     my $selected = shift;
 
-    # Always process sections if not section selection made
+    # If no section selection made, always process the section
     return 1 if(!$selected || !scalar(keys(%{$selected})));
 
     # One or more section selections made, so only return true if
@@ -109,6 +131,8 @@ my %sectmap = map { $_ => 1 } @sections;
 Log::Log4perl -> init(path_join($path, "config", "logging.cnf"));
 my $logger = Log::Log4perl -> get_logger();
 
+make_path(PIDPATH)
+    unless(-d PIDPATH);
 my $pid_file = PID::File -> new(file => PIDFILENAME);
 $logger -> logdie("Titor is already running. Only one Titor may exist at any time.")
     if($pid_file -> running());
@@ -158,13 +182,15 @@ if($pid_file -> create()) {
     }
 
     # Back up directories
-    my $backup = Titor::Backup -> new(logger     => $logger,
-                                      sshuser    => $config -> {"server"} -> {"user"},
-                                      sshhost    => $config -> {"server"} -> {"hostname"},
-                                      remotepath => $config -> {"server"} -> {"base"},
-                                      full_count => $config -> {"server"} -> {"full_count"},
-                                      inc_count  => $config -> {"server"} -> {"inc_count"},
-                                      margin     => dehumanise($config -> {"server"} -> {"margin"}))
+    my $backup = Titor::Backup -> new(logger       => $logger,
+                                      sshuser      => $config -> {"server"} -> {"user"},
+                                      sshhost      => $config -> {"server"} -> {"hostname"},
+                                      remotepath   => $config -> {"server"} -> {"base"},
+                                      full_count   => $config -> {"server"} -> {"full_count"},
+                                      inc_count    => $config -> {"server"} -> {"inc_count"},
+                                      cleanup_type => $config -> {"server"} -> {"cleanup_type"} // "delete",
+                                      cleanup_dir  => $config -> {"server"} -> {"cleanup_dir"},
+                                      margin       => dehumanise($config -> {"server"} -> {"margin"}))
         or $logger -> logdie("Backup object create failed: ".$Titor::errstr);
 
     foreach my $key (sort(keys(%$config))) {

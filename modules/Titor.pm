@@ -62,6 +62,7 @@ sub new {
                      remotespace => '/bin/df -k --output=avail %(path)s',
                      remoteused  => '/bin/du -ks %(path)s',
                      remoterm    => '/bin/rm -rf %(path)s',
+                     remotemv    => '/bin/mv %(source)s %(dest)s',
 
                      dateformat  => '%Y%m%d-%H%M',
 
@@ -223,17 +224,19 @@ sub _remote_used {
 }
 
 
-## @method protected $ _remote_delete($base, $delete)
+## @method protected $ _remote_delete($base, $delete, $remotedir)
 # Given a base directory and a list of directories inside it, remove the specified
 # directories.
 #
-# @param base   The base directory containing the directories to delete
-# @param delete A reference to an array of directories to delete
+# @param base      The base directory containing the directories to delete
+# @param delete    A reference to an array of directories to delete
+# @param remotedir The remote backup directory base
 # @return true on success, undef on error.
 sub _remote_delete {
-    my $self   = shift;
-    my $base   = shift;
-    my $delete = shift;
+    my $self      = shift;
+    my $base      = shift;
+    my $delete    = shift;
+    my $remotedir = shift;
 
     $self -> clear_error();
 
@@ -241,10 +244,24 @@ sub _remote_delete {
     my @fullpaths = map { path_join($base, $_); } @{$delete};
     my $allpaths  = join(' ', @fullpaths);
 
-    my $cmd = named_sprintf($self -> {"remoterm"}, path => $allpaths);
+    my $cmd;
+    if(lc($self -> {"cleanup_type"}) eq "move" && $self -> {"cleanup_dir"}) {
+        # Make the outpath relative to the remote backup dir, unless it's already absolute
+        my $outpath = $self -> {"cleanup_dir"};
+        $outpath = path_join($remotedir, $outpath)
+            unless($outpath =~ /^\//);
+
+        $self -> _remote_mkpath($outpath)
+            or return undef;
+
+        $cmd = named_sprintf($self -> {"remotemv"}, source => $allpaths,
+                                                    dest   => $outpath);
+    } else {
+        $cmd = named_sprintf($self -> {"remoterm"}, path => $allpaths);
+    }
 
     my ($status, $msg) = $self -> _ssh_cmd($cmd);
-    return $self -> self_error("Remote rm failed: '$msg'")
+    return $self -> self_error("Remote delete failed: '$msg'")
         if($status);
 
     return 1;
