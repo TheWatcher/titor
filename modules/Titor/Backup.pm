@@ -479,8 +479,13 @@ sub _rsync_cludes {
 
     # If the config has an file set, record it.
     my $modefile = $mode."file";
-    $result .= " --$mode-from='".$settings -> {$modefile}."'"
-        if($settings -> {$modefile} && -f $settings -> {$modefile});
+    if($settings -> {$modefile}) {
+        if( -f $settings -> {$modefile} ) {
+            $result .= " --$mode-from='".$settings -> {$modefile}."'";
+        } else {
+            $self -> {"logger"} -> logdie("$modefile directive references non-existent file".$settings -> {$modefile});
+        }
+    }
 
     return $result;
 }
