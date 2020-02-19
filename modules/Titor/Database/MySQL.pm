@@ -84,7 +84,8 @@ sub new {
                                         # Internal database names to always skip.
                                         exclude     => [ 'information_schema',
                                                          'performance_schema',
-                                                         '#innodb_temp'
+                                                         '#innodb_temp',
+                                                         'sys'
                                         ],
 
                                         @_)
